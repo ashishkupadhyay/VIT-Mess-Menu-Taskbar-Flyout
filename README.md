@@ -330,7 +330,7 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 ```powershell
 & "C:\Program Files\Windhawk\Compiler\bin\clang++.exe" `
   "@C:\Program Files\Windhawk\Compiler\compile_flags.txt" `
-  -Wall -fsyntax-only mess-menu-taskbar.wh.cpp
+  -Wall -fsyntax-only vit-mess-menu-taskbar.wh.cpp
 ```
 
 <details>
@@ -343,9 +343,6 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 - **JSON:** `Windows.Data.Json`, so there's no vendored third-party parser.
 - **Blur:** a Composition effect graph (`CreateBackdropBrush` →
   `D2D1GaussianBlur`) exposed as a `XamlCompositionBrushBase`.
-
-`DESIGN_SPEC.md` in this repository documents the architecture and the reasoning
-behind each choice in full.
 
 </details>
 
