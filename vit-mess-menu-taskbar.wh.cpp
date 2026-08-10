@@ -23,7 +23,7 @@ flyout slides up with the full day's menu, split into Breakfast, Lunch, Snacks
 and Dinner. Chevrons at the top let you browse to other days.
 
 ## The flyout open above the taskbar
-![The flyout open above the taskbar](https://github.com/ashishkupadhyay/VIT-Mess-Menu-Taskbar-Flyout/blob/main/docs/screenshots/hero.png)
+![The flyout open above the taskbar](https://raw.githubusercontent.com/ashishkupadhyay/VIT-Mess-Menu-Taskbar-Flyout/refs/heads/main/docs/screenshots/hero.png)
 
 ## What it does
 
