@@ -2052,11 +2052,12 @@ static Button BuildTaskbarButton(bool light) {
         button.Style(style);
     }
     // Stretch to the tray's full height so the hover/pressed fill matches the
-    // neighbouring taskbar buttons instead of hugging the text. The small
-    // vertical margin is the inset Windows itself leaves around tray buttons.
+    // neighbouring taskbar buttons instead of hugging the text. 4px is the
+    // inset Windows itself leaves: on a 48px taskbar its own buttons highlight
+    // 40px tall, so this lands the fill at the same height as theirs.
     button.Padding({8, 0, 8, 0});
-    button.Margin({(double)g_settings.buttonPaddingLeft, 6,
-                   (double)g_settings.buttonPaddingRight, 6});
+    button.Margin({(double)g_settings.buttonPaddingLeft, 4,
+                   (double)g_settings.buttonPaddingRight, 4});
     button.VerticalAlignment(VerticalAlignment::Stretch);
     button.HorizontalAlignment(HorizontalAlignment::Center);
 

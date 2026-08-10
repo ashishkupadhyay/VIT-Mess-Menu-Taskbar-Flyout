@@ -96,21 +96,16 @@ countdown on each.
 
 ### The taskbar button
 
-#### Taskbar button during a meal
 ![Taskbar button during a meal](docs/screenshots/button-expanded.png)
 
-#### Taskbar button showing the next-meal countdown
 ![Taskbar button showing the next-meal countdown](docs/screenshots/button-countdown.png)
 
-#### Taskbar button in compact mode
 ![Taskbar button in compact mode](docs/screenshots/button-compact.png)
 
 ### The flyout
 
-#### The flyout during a meal
 ![The flyout during a meal](docs/screenshots/flyout-during.png)
 
-#### The flyout with next meal highlighted
 ![The flyout with next meal highlighted](docs/screenshots/flyout-next.png)
 
 ### Settings
@@ -153,7 +148,7 @@ installer. It's free and open-source.
 <details>
 <summary><b>Option B — from this repository</b></summary>
 
-1. Download [`mess-menu-taskbar.wh.cpp`](mess-menu-taskbar.wh.cpp).
+1. Download [`vit-mess-menu-taskbar.wh.cpp`](vit-mess-menu-taskbar.wh.cpp).
 2. Open Windhawk → **Create Mod**.
 3. Select everything in the editor and paste the file's contents over it.
 4. Press **Ctrl+B** to compile, then **Ctrl+S** to save and enable.
@@ -207,7 +202,6 @@ background.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Check for new menus automatically** | On | When off, the menu is only fetched via the flyout's reload button |
-| **Verbose logging** | Off | Extra detail in the Windhawk log, for troubleshooting |
 
 > **Matching a Taskbar Styler theme:** set **Flyout background** to `Custom`,
 > then copy your theme's values across. For the *Tinted Glass* theme
@@ -252,11 +246,9 @@ Menus come from:
 https://messit.vinnovateit.com/menu-data/hostel-{hostel}-mess-{mess}.json
 ```
 
-Each file covers one month. Cached copies live in:
-
-```
-%LOCALAPPDATA%\Windhawk\MessMenu
-```
+Each file covers one month. Cached copies live in Windhawk's own storage folder
+for this mod, which **Windhawk deletes when the mod is removed** — so the mod
+leaves nothing behind on your disk.
 
 - If the current month is already cached, **nothing is downloaded**.
 - If it's missing, the mod retries every 6 hours, backing off from 15 minutes on
@@ -312,9 +304,9 @@ system-wide and the flyout falls back to a solid surface.
 <details>
 <summary><b>The menu looks wrong or out of date</b></summary>
 
-Press the reload button in the flyout. If that doesn't help, delete
-`%LOCALAPPDATA%\Windhawk\MessMenu` and toggle the mod off and on to re-download
-from scratch.
+Press the reload button in the flyout. If that doesn't help, remove the mod in
+Windhawk and add it again — that clears the cached menus, so the next check
+downloads from scratch.
 
 </details>
 
@@ -359,6 +351,12 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
   flyout to it.
 - **[Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler)**
   — the reference for the Composition blur brush.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 
