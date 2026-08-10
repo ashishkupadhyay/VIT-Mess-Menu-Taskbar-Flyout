@@ -97,16 +97,21 @@ being served.
 
 ### The taskbar button
 
+#### Taskbar button during a meal
 ![Taskbar button during a meal](docs/screenshots/button-expanded.png)
 
+#### Taskbar button showing the next-meal countdown
 ![Taskbar button showing the next-meal countdown](docs/screenshots/button-countdown.png)
 
+#### Taskbar button in compact mode
 ![Taskbar button in compact mode](docs/screenshots/button-compact.png)
 
 ### The flyout
 
+#### Flyout during a meal
 ![The flyout during a meal](docs/screenshots/flyout-during.png)
 
+#### Flyout with next meal highlighted
 ![The flyout with next meal highlighted](docs/screenshots/flyout-next.png)
 
 ### Settings
@@ -356,10 +361,14 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 - **[messit.vinnovateit.com](https://messit.vinnovateit.com)** by
   [VinnovateIT](https://vinnovateit.com/) — the menu data this mod reads.
 - **[Taskbar Fluent Media Player](https://windhawk.net/mods/taskbar-fluent-media-player)**
-  by Salyts — the reference for injecting XAML into the taskbar and anchoring a
-  flyout to it.
+  by Salyts, and **[Taskbar AI Quota](https://windhawk.net/mods/taskbar-ai-quota)**
+  — the references for reaching the taskbar's XAML root through
+  `CTaskBand::GetTaskbarHost` and the `TaskbarHost::FrameHeight` prologue, the
+  system-tray column insert/remove, and the `RunFromWindowThread` helper.
 - **[Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler)**
-  — the reference for the Composition blur brush.
+  — the reference for the Composition backdrop-blur brush.
+
+All of the above are MIT licensed.
 
 ---
 
