@@ -3,7 +3,7 @@
 // @name            VIT Mess Menu Taskbar Flyout
 // @description     Shows the VIT Vellore hostel mess menu on the Windows 11 taskbar, with a native flyout for the full day's menu.
 // @version         1.0.0
-// @author          Ashish Kumar
+// @author          ashishkupadhyay
 // @github          https://github.com/ashishkupadhyay/
 // @include         explorer.exe
 // @compilerOptions -lole32 -loleaut32 -lruntimeobject -luuid -luser32 -lwindowsapp -lshell32 -lshlwapi -ldwmapi -lshcore -lwinhttp
