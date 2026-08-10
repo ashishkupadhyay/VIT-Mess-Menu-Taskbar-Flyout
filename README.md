@@ -69,8 +69,9 @@ text in the tooltip.
 Raw menu data is one long comma-separated line. The mod sorts every item into
 five groups and lays them out inline.
 
-The current meal is highlighted green, the upcoming one amber, with a live
-countdown on each.
+Exactly one card is highlighted at a time, with a live countdown beside it:
+green for the meal being served now, amber for the next one when nothing is
+being served.
 
 ### Quietly keeps itself current
 
@@ -124,6 +125,14 @@ countdown on each.
 
 > **Windows 10 is not supported.** The mod hooks the XAML taskbar, which
 > Windows 10 does not have. It will fail to load rather than misbehave.
+
+> **Primary taskbar only.** On a multi-monitor setup with taskbars on every
+> display, the button appears on the primary one.
+
+> **Depends on a third-party site.** The menus come from
+> `messit.vinnovateit.com`, which this mod does not control. If that site
+> changes its data format or goes offline, the mod will report that no menu is
+> available.
 
 ---
 
