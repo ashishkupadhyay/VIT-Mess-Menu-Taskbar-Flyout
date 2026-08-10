@@ -96,16 +96,21 @@ countdown on each.
 
 ### The taskbar button
 
+#### Taskbar button during a meal
 ![Taskbar button during a meal](docs/screenshots/button-expanded.png)
 
+#### Taskbar button showing the next-meal countdown
 ![Taskbar button showing the next-meal countdown](docs/screenshots/button-countdown.png)
 
+#### Taskbar button in compact mode
 ![Taskbar button in compact mode](docs/screenshots/button-compact.png)
 
 ### The flyout
 
+#### The flyout during a meal
 ![The flyout during a meal](docs/screenshots/flyout-during.png)
 
+#### The flyout with next meal highlighted
 ![The flyout with next meal highlighted](docs/screenshots/flyout-next.png)
 
 ### Settings
