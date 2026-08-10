@@ -87,11 +87,21 @@ exist on Windows 10.
   - compact: Compact
 - position: tray_left
   $name: Button position
+  $description: The first sits in the taskbar's own area; the rest sit inside the system tray, next to the other tray icons.
   $options:
+  - taskbar_left: Left edge of the taskbar
   - tray_left: Left of the system tray
-  - tray_right: Right of the system tray
   - clock_left: Left of the clock
   - clock_right: Right of the clock
+- buttonPaddingLeft: 4
+  $name: Button spacing (left)
+  $description: Gap in pixels to the left of the button, which also shifts the button to the right. Increase this to move clear of another mod occupying the same spot.
+- buttonPaddingRight: 4
+  $name: Button spacing (right)
+  $description: Gap in pixels to the right of the button.
+- reserveTaskbarSpace: true
+  $name: Push the taskbar icons aside
+  $description: Left edge position only. Reserves the button's width plus its spacing before the taskbar icons, so they move out of the way instead of sitting underneath. Turn this off if another mod already manages that space.
 - maxLabelWidth: 180
   $name: Maximum label width
   $description: Longer text is truncated with an ellipsis. Pixels.
@@ -105,16 +115,16 @@ exist on Windows 10.
   $name: Show the Snacks card
 - backgroundMode: auto
   $name: Flyout background
-  $description: Auto matches the taskbar. Use Custom to match a Taskbar Styler theme.
+  $description: Match Windows follows the built-in Windows 11 flyout styling and ignores the two settings below. Use Custom to match a Taskbar Styler theme instead.
   $options:
-  - auto: Match the taskbar
-  - custom: Custom colour
-- backgroundColor: "0 0 0"
+  - auto: Match Windows 11
+  - custom: Custom colour and blur
+- backgroundColor: "#80000000"
   $name: Custom background colour
-  $description: Red Green Blue, 0-255 each. Only used when the background is set to Custom.
-- backgroundOpacity: 80
-  $name: Custom background opacity
-  $description: 0-100.
+  $description: "Only used when the background is set to Custom. Hex with the alpha first: #AARRGGBB, or #RRGGBB for fully opaque. The default #80000000 is the Tinted Glass taskbar theme's colour."
+- blurAmount: 18
+  $name: Custom blur amount
+  $description: Only used when the background is set to Custom. Blur radius in pixels, on the same scale Taskbar Styler themes use. The default 18 is the Tinted Glass taskbar theme's value. Set to 0 for a flat surface with no blur.
 - autoUpdate: true
   $name: Check for new menus automatically
   $description: When off, the menu is only downloaded when you press the reload button in the flyout.
@@ -139,6 +149,9 @@ exist on Windows 10.
 #include <winrt/Windows.UI.Xaml.Markup.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Media.Animation.h>
+#include <winrt/Windows.UI.Xaml.Hosting.h>
+#include <winrt/Windows.UI.Composition.h>
+#include <winrt/Windows.Graphics.Effects.h>
 
 #include <windows.h>
 #include <shlobj.h>
@@ -150,6 +163,7 @@ exist on Windows 10.
 #include <atomic>
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <cstdlib>
 #include <cwchar>
 #include <cwctype>
@@ -187,13 +201,16 @@ struct ModSettings {
     int  mess            = 2;       // 1 = special, 2 = veg, 3 = non-veg
     bool compact         = false;
     std::wstring position = L"tray_left";
+    int  buttonPaddingLeft  = 4;
+    int  buttonPaddingRight = 4;
+    bool reserveTaskbarSpace = true;
     int  maxLabelWidth   = 180;
     int  popupWidth      = 380;
     int  popupCornerRadius = 8;
     bool showSnacks      = true;
     bool customBackground = false;
-    BYTE bgR = 0, bgG = 0, bgB = 0;
-    int  bgOpacity       = 80;
+    BYTE bgA = 0x80, bgR = 0, bgG = 0, bgB = 0;
+    int  blurAmount      = 18;
     bool autoUpdate      = true;
     bool verbose         = false;
 };
@@ -214,30 +231,50 @@ static std::wstring GetStringSetting(PCWSTR key, PCWSTR fallback) {
     return result;
 }
 
-static void ParseRgb(const std::wstring& text, BYTE& r, BYTE& g, BYTE& b) {
-    int values[3] = {0, 0, 0};
-    int index = 0;
-    size_t pos = 0;
-    while (index < 3 && pos < text.size()) {
-        while (pos < text.size() && !iswdigit(text[pos])) {
-            pos++;
+// Accepts #AARRGGBB and #RRGGBB, with or without the leading '#', in either
+// case. Six digits mean fully opaque. Returns false on anything malformed so
+// the caller can fall back to the default rather than to an invisible flyout.
+static bool ParseHexColor(const std::wstring& text, BYTE& a, BYTE& r, BYTE& g,
+                          BYTE& b) {
+    std::wstring digits;
+    for (wchar_t c : text) {
+        if (c == L'#' || c == L' ' || c == L'\t') {
+            continue;
         }
-        if (pos >= text.size()) {
-            break;
+        if (!iswxdigit(c)) {
+            return false;
         }
-        int accumulated = 0;
-        while (pos < text.size() && iswdigit(text[pos])) {
-            accumulated = accumulated * 10 + (text[pos] - L'0');
-            if (accumulated > 255) {
-                accumulated = 255;
-            }
-            pos++;
-        }
-        values[index++] = accumulated;
+        digits.push_back(c);
     }
-    r = (BYTE)values[0];
-    g = (BYTE)values[1];
-    b = (BYTE)values[2];
+
+    if (digits.size() != 6 && digits.size() != 8) {
+        return false;
+    }
+
+    auto nibble = [](wchar_t c) -> int {
+        if (c >= L'0' && c <= L'9') {
+            return c - L'0';
+        }
+        if (c >= L'a' && c <= L'f') {
+            return c - L'a' + 10;
+        }
+        return c - L'A' + 10;
+    };
+    auto byteAt = [&](size_t i) -> BYTE {
+        return (BYTE)((nibble(digits[i]) << 4) | nibble(digits[i + 1]));
+    };
+
+    size_t offset = 0;
+    if (digits.size() == 8) {
+        a = byteAt(0);
+        offset = 2;
+    } else {
+        a = 0xFF;
+    }
+    r = byteAt(offset);
+    g = byteAt(offset + 2);
+    b = byteAt(offset + 4);
+    return true;
 }
 
 static void LoadSettings() {
@@ -248,6 +285,14 @@ static void LoadSettings() {
 
     g_settings.compact = (GetStringSetting(L"buttonMode", L"expanded") == L"compact");
     g_settings.position = GetStringSetting(L"position", L"tray_left");
+    // Wide enough to slide the button across any monitor; the bound is only
+    // here to stop a typo pushing it off-screen with no way back.
+    g_settings.buttonPaddingLeft =
+        std::clamp(Wh_GetIntSetting(L"buttonPaddingLeft"), 0, 4000);
+    g_settings.buttonPaddingRight =
+        std::clamp(Wh_GetIntSetting(L"buttonPaddingRight"), 0, 4000);
+    g_settings.reserveTaskbarSpace =
+        Wh_GetIntSetting(L"reserveTaskbarSpace") != 0;
 
     g_settings.maxLabelWidth = std::clamp(Wh_GetIntSetting(L"maxLabelWidth"), 40, 600);
     g_settings.popupWidth = std::clamp(Wh_GetIntSetting(L"popupWidth"), 260, 900);
@@ -257,10 +302,19 @@ static void LoadSettings() {
 
     g_settings.customBackground =
         (GetStringSetting(L"backgroundMode", L"auto") == L"custom");
-    ParseRgb(GetStringSetting(L"backgroundColor", L"0 0 0"), g_settings.bgR,
-             g_settings.bgG, g_settings.bgB);
-    g_settings.bgOpacity = std::clamp(Wh_GetIntSetting(L"backgroundOpacity"), 0, 100);
+    std::wstring hexColor = GetStringSetting(L"backgroundColor", L"#80000000");
+    if (!ParseHexColor(hexColor, g_settings.bgA, g_settings.bgR, g_settings.bgG,
+                       g_settings.bgB)) {
+        Wh_Log(L"LoadSettings: could not parse backgroundColor \"%s\", "
+               L"using the default",
+               hexColor.c_str());
+        g_settings.bgA = 0x80;
+        g_settings.bgR = 0;
+        g_settings.bgG = 0;
+        g_settings.bgB = 0;
+    }
 
+    g_settings.blurAmount = std::clamp(Wh_GetIntSetting(L"blurAmount"), 0, 100);
     g_settings.autoUpdate = Wh_GetIntSetting(L"autoUpdate") != 0;
     g_settings.verbose = Wh_GetIntSetting(L"verboseLogging") != 0;
 }
@@ -1385,35 +1439,288 @@ static winrt::Windows::UI::Color SeparatorColor(bool light) {
                  : MakeColor(0x1F, 0xFF, 0xFF, 0xFF);
 }
 
-static Brush MakeFlyoutBackgroundBrush(bool light) {
-    if (g_settings.customBackground) {
-        BYTE alpha = (BYTE)std::clamp(g_settings.bgOpacity * 255 / 100, 0, 255);
-        return MakeBrush(
-            MakeColor(alpha, g_settings.bgR, g_settings.bgG, g_settings.bgB));
-    }
+// Windows' own acrylic surfaces blur at roughly 30px; using the same radius is
+// what makes "Match Windows 11" read as a built-in flyout.
+static constexpr int kNativeBlurAmount = 30;
 
-    // Acrylic keeps the flyout visually attached to the taskbar. If the system
-    // has transparency effects off, XAML falls back to FallbackColor by itself.
+// The tint Windows itself uses for flyout surfaces, read from Explorer's live
+// resource dictionary so it tracks the OS theme instead of being guessed here.
+//
+// Windows composites acrylic with a luminosity blend that a flat tint cannot
+// reproduce exactly, so the brush's luminosity opacity is used as the tint's
+// alpha -- close in practice. The clamp keeps the result readable if a future
+// Windows build reports something unexpected.
+static winrt::Windows::UI::Color NativeFlyoutTint(bool light) {
+    static const wchar_t* const kResourceKeys[] = {
+        L"AcrylicBackgroundFillColorDefaultBrush",
+        L"AcrylicInAppFillColorDefaultBrush",
+        L"SystemControlAcrylicElementBrush",
+        L"SystemControlAcrylicWindowBrush",
+    };
+
     try {
-        AcrylicBrush brush;
-        brush.BackgroundSource(AcrylicBackgroundSource::HostBackdrop);
-        if (light) {
-            brush.TintColor(MakeColor(0xFF, 0xF3, 0xF3, 0xF3));
-            brush.TintOpacity(0.80);
-            brush.FallbackColor(MakeColor(0xF2, 0xF3, 0xF3, 0xF3));
-        } else {
-            brush.TintColor(MakeColor(0xFF, 0x20, 0x20, 0x20));
-            brush.TintOpacity(0.75);
-            brush.FallbackColor(MakeColor(0xF2, 0x20, 0x20, 0x20));
+        auto application = Application::Current();
+        if (application) {
+            auto resources = application.Resources();
+            for (const wchar_t* key : kResourceKeys) {
+                auto boxedKey = winrt::box_value(winrt::hstring{key});
+                if (!resources.HasKey(boxedKey)) {
+                    continue;
+                }
+                auto value = resources.Lookup(boxedKey);
+
+                if (auto acrylic = value.try_as<AcrylicBrush>()) {
+                    double opacity = acrylic.TintOpacity();
+                    if (auto luminosity = acrylic.TintLuminosityOpacity()) {
+                        opacity = luminosity.Value();
+                    }
+                    int alpha = (int)(opacity * 255.0 + 0.5);
+                    alpha = std::clamp(alpha, 0x99, 0xE6);
+                    auto tint = acrylic.TintColor();
+                    return MakeColor((BYTE)alpha, tint.R, tint.G, tint.B);
+                }
+                if (auto solid = value.try_as<SolidColorBrush>()) {
+                    return solid.Color();
+                }
+            }
         }
-        return brush;
     } catch (...) {
-        Wh_Log(L"MakeFlyoutBackgroundBrush: acrylic unavailable, using solid");
     }
 
-    return MakeBrush(light ? MakeColor(0xF2, 0xF3, 0xF3, 0xF3)
-                           : MakeColor(0xF2, 0x20, 0x20, 0x20));
+    // Windows 11's published acrylic defaults, for when the lookup comes up
+    // empty.
+    return light ? MakeColor(0xD9, 0xFC, 0xFC, 0xFC)
+                 : MakeColor(0xD9, 0x2C, 0x2C, 0x2C);
 }
+
+// ---------------------------------------------------------------------------
+// Section 12b: backdrop blur
+//
+// AcrylicBrush exposes no blur radius (only TintColor / TintOpacity /
+// TintLuminosityOpacity), and its HostBackdrop source renders nothing at all
+// inside this flyout. So the backdrop is built as a Composition effect graph
+// instead, following Windhawk Taskbar Styler's XamlBlurBrush:
+//
+//     Compositor.CreateBackdropBrush()  ->  D2D1GaussianBlur  ->  CompositionBrush
+//
+// Two details that matter, both learned the hard way:
+//   * CreateBackdropBrush, *not* CreateHostBackdropBrush. The host variant is
+//     pre-blurred by DWM at a fixed radius and ignores the effect graph, which
+//     is why every blur value used to look identical.
+//   * The result is exposed as a XamlCompositionBrushBase, not as a sprite
+//     visual, so XAML clips it to the Border's CornerRadius for free.
+//
+// Describing a D2D effect to the compositor needs IGraphicsEffectD2D1Interop
+// from windows.graphics.effects.interop.h, which Windhawk's toolchain does not
+// ship, so it is declared here.
+// ---------------------------------------------------------------------------
+
+// CLSID_D2D1GaussianBlur.
+static constexpr GUID kGaussianBlurEffectId = {
+    0x1FEB6D69,
+    0x2FE6,
+    0x4AC9,
+    {0x8C, 0x58, 0x1D, 0x7F, 0x93, 0xE7, 0xA6, 0xA5}};
+
+// D2D1_GAUSSIANBLUR_PROP_*
+static constexpr UINT kBlurPropStandardDeviation = 0;
+static constexpr UINT kBlurPropOptimization = 1;
+static constexpr UINT kBlurPropBorderMode = 2;
+
+// D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED, D2D1_BORDER_MODE_SOFT.
+static constexpr UINT32 kBlurOptimizationBalanced = 1;
+static constexpr UINT32 kBorderModeSoft = 0;
+
+// GRAPHICS_EFFECT_PROPERTY_MAPPING_DIRECT.
+static constexpr UINT kPropertyMappingDirect = 1;
+
+// Out-parameters are void** so the ABI types never have to be named; detach_abi
+// below hands back the correct interface pointer.
+struct IGraphicsEffectD2D1Interop : ::IUnknown {
+    virtual HRESULT __stdcall GetEffectId(GUID* id) = 0;
+    virtual HRESULT __stdcall GetNamedPropertyMapping(LPCWSTR name, UINT* index,
+                                                      UINT* mapping) = 0;
+    virtual HRESULT __stdcall GetPropertyCount(UINT* count) = 0;
+    virtual HRESULT __stdcall GetProperty(UINT index, void** value) = 0;
+    virtual HRESULT __stdcall GetSource(UINT index, void** source) = 0;
+    virtual HRESULT __stdcall GetSourceCount(UINT* count) = 0;
+};
+
+// This toolchain is MinGW-flavoured, so the IID goes on with __CRT_UUID_DECL;
+// clang silently ignores __declspec(uuid(...)) here and winrt::guid_of then
+// fails to compile.
+// {2FC57384-A068-44D7-A331-30982FCF7177}
+__CRT_UUID_DECL(IGraphicsEffectD2D1Interop, 0x2FC57384, 0xA068, 0x44D7, 0xA3,
+                0x31, 0x30, 0x98, 0x2F, 0xCF, 0x71, 0x77)
+
+struct GaussianBlurEffect
+    : winrt::implements<GaussianBlurEffect,
+                        winrt::Windows::Graphics::Effects::IGraphicsEffect,
+                        winrt::Windows::Graphics::Effects::IGraphicsEffectSource,
+                        IGraphicsEffectD2D1Interop> {
+    winrt::Windows::Graphics::Effects::IGraphicsEffectSource Source{nullptr};
+    float BlurAmount = 3.0f;
+
+    // IGraphicsEffect
+    winrt::hstring Name() const noexcept { return m_name; }
+    void Name(winrt::hstring const& value) noexcept { m_name = value; }
+
+    // IGraphicsEffectD2D1Interop
+    HRESULT __stdcall GetEffectId(GUID* id) noexcept final {
+        if (!id) {
+            return E_INVALIDARG;
+        }
+        *id = kGaussianBlurEffectId;
+        return S_OK;
+    }
+
+    HRESULT __stdcall GetNamedPropertyMapping(LPCWSTR name, UINT* index,
+                                              UINT* mapping) noexcept final {
+        if (!name || !index || !mapping) {
+            return E_INVALIDARG;
+        }
+        if (_wcsicmp(name, L"BlurAmount") == 0) {
+            *index = kBlurPropStandardDeviation;
+            *mapping = kPropertyMappingDirect;
+            return S_OK;
+        }
+        if (_wcsicmp(name, L"Optimization") == 0) {
+            *index = kBlurPropOptimization;
+            *mapping = kPropertyMappingDirect;
+            return S_OK;
+        }
+        if (_wcsicmp(name, L"BorderMode") == 0) {
+            *index = kBlurPropBorderMode;
+            *mapping = kPropertyMappingDirect;
+            return S_OK;
+        }
+        return E_INVALIDARG;
+    }
+
+    HRESULT __stdcall GetPropertyCount(UINT* count) noexcept final {
+        if (!count) {
+            return E_INVALIDARG;
+        }
+        *count = 3;
+        return S_OK;
+    }
+
+    HRESULT __stdcall GetProperty(UINT index, void** value) noexcept final {
+        if (!value) {
+            return E_INVALIDARG;
+        }
+        *value = nullptr;
+        try {
+            using winrt::Windows::Foundation::IPropertyValue;
+            using winrt::Windows::Foundation::PropertyValue;
+
+            IPropertyValue property{nullptr};
+            switch (index) {
+                case kBlurPropStandardDeviation:
+                    property = PropertyValue::CreateSingle(BlurAmount)
+                                   .as<IPropertyValue>();
+                    break;
+                case kBlurPropOptimization:
+                    property =
+                        PropertyValue::CreateUInt32(kBlurOptimizationBalanced)
+                            .as<IPropertyValue>();
+                    break;
+                case kBlurPropBorderMode:
+                    property = PropertyValue::CreateUInt32(kBorderModeSoft)
+                                   .as<IPropertyValue>();
+                    break;
+                default:
+                    return E_INVALIDARG;
+            }
+            *value = winrt::detach_abi(property);
+            return S_OK;
+        } catch (...) {
+            return E_FAIL;
+        }
+    }
+
+    HRESULT __stdcall GetSource(UINT index, void** source) noexcept final {
+        if (!source) {
+            return E_INVALIDARG;
+        }
+        *source = nullptr;
+        if (index != 0) {
+            return E_INVALIDARG;
+        }
+        auto copy = Source;
+        *source = winrt::detach_abi(copy);
+        return S_OK;
+    }
+
+    HRESULT __stdcall GetSourceCount(UINT* count) noexcept final {
+        if (!count) {
+            return E_INVALIDARG;
+        }
+        *count = 1;
+        return S_OK;
+    }
+
+   private:
+    winrt::hstring m_name{L"MessMenuBlur"};
+};
+
+// A XAML brush that paints a blurred copy of whatever sits behind it. Assign it
+// to a Border's Background like any other brush.
+class MessBlurBrush : public XamlCompositionBrushBaseT<MessBlurBrush> {
+   public:
+    MessBlurBrush(UIElement const& element, float blurAmount,
+                  winrt::Windows::UI::Color fallbackColor)
+        : m_compositor(winrt::Windows::UI::Xaml::Hosting::
+                           ElementCompositionPreview::GetElementVisual(element)
+                               .Compositor()),
+          m_blurAmount(blurAmount),
+          m_fallbackColor(fallbackColor) {}
+
+    void OnConnected() {
+        if (CompositionBrush()) {
+            return;
+        }
+        try {
+            CompositionBrush(CreateEffectBrush());
+        } catch (...) {
+            Wh_Log(L"MessBlurBrush: effect unavailable, using a solid brush");
+            try {
+                CompositionBrush(m_compositor.CreateColorBrush(m_fallbackColor));
+            } catch (...) {
+            }
+        }
+    }
+
+    void OnDisconnected() {
+        try {
+            if (auto brush = CompositionBrush()) {
+                brush.Close();
+                CompositionBrush(nullptr);
+            }
+        } catch (...) {
+        }
+    }
+
+   private:
+    winrt::Windows::UI::Composition::CompositionBrush CreateEffectBrush() {
+        using namespace winrt::Windows::UI::Composition;
+
+        auto backdrop = m_compositor.CreateBackdropBrush();
+
+        auto blur = winrt::make_self<GaussianBlurEffect>();
+        blur->Source = CompositionEffectSourceParameter(L"backdrop");
+        blur->BlurAmount = m_blurAmount;
+
+        auto factory = m_compositor.CreateEffectFactory(*blur);
+        auto brush = factory.CreateBrush();
+        brush.SetSourceParameter(L"backdrop", backdrop);
+        return brush;
+    }
+
+    winrt::Windows::UI::Composition::Compositor m_compositor;
+    float m_blurAmount;
+    winrt::Windows::UI::Color m_fallbackColor;
+};
 
 // A minimal "subtle" button template, so our buttons pick up the same quiet
 // hover treatment the surrounding taskbar buttons use.
@@ -1491,7 +1798,13 @@ static Style MakeSubtleButtonStyle(bool light) {
 static Button g_taskbarButton{nullptr};
 static TextBlock g_taskbarLabel{nullptr};
 static Grid g_injectionParent{nullptr};
+// -1 means we appended without adding a column (taskbar-area positions).
 static int g_injectedColumn = -1;
+// The taskbar's icon strip, when we are holding space open in front of it.
+static FrameworkElement g_reservedElement{nullptr};
+static Thickness g_reservedOriginalMargin{};
+static bool g_hasReservedOriginalMargin = false;
+static winrt::event_token g_buttonSizeToken{};
 
 static Flyout g_flyout{nullptr};
 static Border g_flyoutRoot{nullptr};
@@ -1617,7 +1930,8 @@ static Button BuildTaskbarButton(bool light) {
     // neighbouring taskbar buttons instead of hugging the text. The small
     // vertical margin is the inset Windows itself leaves around tray buttons.
     button.Padding({8, 0, 8, 0});
-    button.Margin({0, 3, 0, 3});
+    button.Margin({(double)g_settings.buttonPaddingLeft, 6,
+                   (double)g_settings.buttonPaddingRight, 6});
     button.VerticalAlignment(VerticalAlignment::Stretch);
     button.HorizontalAlignment(HorizontalAlignment::Center);
 
@@ -1691,11 +2005,79 @@ static int ResolveInsertColumn(Grid const& trayGrid) {
         if (clockColumn >= 0) {
             return position == L"clock_left" ? clockColumn : clockColumn + 1;
         }
+        // Clock not found -- fall through and append at the end.
     }
+    // Fallback: append after everything else.
     return columnCount;
 }
 
+static bool IsTaskbarAreaPosition() {
+    return g_settings.position == L"taskbar_left";
+}
+
+// Holds the taskbar's icon strip clear of the button by widening its left
+// margin. With centred icons this shrinks the space they centre within, so they
+// stay centred and simply never reach far enough left to collide; with
+// left-aligned icons it pushes them right. Driven by the button's SizeChanged,
+// so it keeps up as the label text changes width.
+static void UpdateReservedSpace() {
+    if (!g_reservedElement || !g_taskbarButton || !g_hasReservedOriginalMargin ||
+        g_unloading) {
+        return;
+    }
+    try {
+        double width = g_taskbarButton.ActualWidth();
+        if (width <= 0.0) {
+            return;
+        }
+        double wanted = g_reservedOriginalMargin.Left + width +
+                        (double)g_settings.buttonPaddingLeft +
+                        (double)g_settings.buttonPaddingRight;
+
+        auto margin = g_reservedElement.Margin();
+        if (std::abs(margin.Left - wanted) > 1.0) {
+            margin.Left = wanted;
+            g_reservedElement.Margin(margin);
+        }
+    } catch (...) {
+    }
+}
+
+// Taskbar.TaskbarFrame > Grid#RootGrid -- the grid that spans the whole
+// taskbar, as opposed to the system tray's own grid.
+static Grid FindTaskbarRootGrid(FrameworkElement const& root) {
+    FrameworkElement frame = root;
+    if (winrt::get_class_name(root) != L"Taskbar.TaskbarFrame") {
+        frame = FindChildByClassName(root, L"Taskbar.TaskbarFrame");
+    }
+    if (!frame) {
+        return nullptr;
+    }
+    auto rootGrid = FindChildByName(frame, L"RootGrid");
+    return rootGrid ? rootGrid.try_as<Grid>() : nullptr;
+}
+
 static void RemoveTaskbarButton() {
+    // Give the taskbar its own layout back before anything else, so an
+    // exception later cannot leave the icons permanently shoved aside.
+    try {
+        if (g_taskbarButton && g_buttonSizeToken.value) {
+            g_taskbarButton.SizeChanged(g_buttonSizeToken);
+        }
+    } catch (...) {
+    }
+    g_buttonSizeToken = {};
+
+    try {
+        if (g_reservedElement && g_hasReservedOriginalMargin) {
+            g_reservedElement.Margin(g_reservedOriginalMargin);
+        }
+    } catch (...) {
+        Wh_Log(L"RemoveTaskbarButton: could not restore the icon strip margin");
+    }
+    g_reservedElement = nullptr;
+    g_hasReservedOriginalMargin = false;
+
     try {
         if (g_injectionParent && g_taskbarButton) {
             uint32_t index = 0;
@@ -1763,6 +2145,57 @@ static bool InjectTaskbarButton() {
         const bool light = IsLightTheme();
         Button button = BuildTaskbarButton(light);
 
+        // --- taskbar-area positions: sit in the taskbar's own grid ----------
+        if (IsTaskbarAreaPosition()) {
+            auto rootGrid = FindTaskbarRootGrid(root);
+            if (!rootGrid) {
+                Wh_Log(L"InjectTaskbarButton: taskbar RootGrid not found");
+                return false;
+            }
+
+            button.HorizontalAlignment(HorizontalAlignment::Left);
+
+            // RootGrid may be columned; span it so the alignment above is
+            // measured against the whole taskbar rather than one column.
+            int columnCount = (int)rootGrid.ColumnDefinitions().Size();
+            if (columnCount > 1) {
+                Grid::SetColumn(button, 0);
+                Grid::SetColumnSpan(button, columnCount);
+            }
+
+            rootGrid.Children().Append(button);
+
+            g_taskbarButton = button;
+            g_injectionParent = rootGrid;
+            g_injectedColumn = -1;
+
+            // Nothing lets us see where another mod has parked itself, so the
+            // spacing settings stay the manual escape hatch. What we can do is
+            // stop the taskbar's own icons from sitting underneath us.
+            if (g_settings.reserveTaskbarSpace) {
+                auto repeater = FindChildByName(rootGrid, L"TaskbarFrameRepeater");
+                if (repeater) {
+                    g_reservedElement = repeater;
+                    g_reservedOriginalMargin = repeater.Margin();
+                    g_hasReservedOriginalMargin = true;
+                    g_buttonSizeToken = button.SizeChanged(
+                        [](winrt::Windows::Foundation::IInspectable const&,
+                           SizeChangedEventArgs const&) {
+                            UpdateReservedSpace();
+                        });
+                    UpdateReservedSpace();
+                } else {
+                    Wh_Log(L"InjectTaskbarButton: TaskbarFrameRepeater not "
+                           L"found, cannot reserve space");
+                }
+            }
+
+            g_lastLabelText.clear();
+            UpdateTaskbarLabel();
+            return true;
+        }
+
+        // --- system-tray positions: insert a column into the tray grid ------
         int insertColumn = std::clamp(ResolveInsertColumn(trayGrid), 0,
                                       (int)trayGrid.ColumnDefinitions().Size());
 
@@ -2101,11 +2534,36 @@ static Border BuildFlyoutContent() {
     root.Width((double)g_settings.popupWidth);
     const double popupRadius = PopupCornerRadius();
     root.CornerRadius({popupRadius, popupRadius, popupRadius, popupRadius});
-    root.Background(MakeFlyoutBackgroundBrush(light));
     root.BorderThickness({1, 1, 1, 1});
     root.BorderBrush(MakeBrush(light ? MakeColor(0x24, 0x00, 0x00, 0x00)
                                      : MakeColor(0x24, 0xFF, 0xFF, 0xFF)));
-    root.Padding({14, 12, 14, 10});
+
+    // "Match Windows 11" ignores both the custom colour and the custom blur
+    // amount by design: the tint comes from Explorer's own acrylic resource and
+    // the radius is Windows' own, so the flyout follows the OS rather than
+    // whatever those two settings happen to hold.
+    const bool custom = g_settings.customBackground;
+    const winrt::Windows::UI::Color tintColor =
+        custom ? MakeColor(g_settings.bgA, g_settings.bgR, g_settings.bgG,
+                           g_settings.bgB)
+               : NativeFlyoutTint(light);
+    const int blurAmount = custom ? g_settings.blurAmount : kNativeBlurAmount;
+    bool blurAttached = false;
+
+    if (blurAmount > 0) {
+        try {
+            auto blurBrush = winrt::make_self<MessBlurBrush>(
+                root, (float)blurAmount,
+                MakeColor(0xF2, tintColor.R, tintColor.G, tintColor.B));
+            root.Background(blurBrush.as<Brush>());
+            blurAttached = true;
+        } catch (...) {
+            Wh_Log(L"BuildFlyoutContent: could not create the blur brush");
+        }
+    }
+    if (!blurAttached) {
+        root.Background(MakeBrush(tintColor));
+    }
 
     Grid layout;
     layout.RowDefinitions().Append([] {
@@ -2279,13 +2737,27 @@ static Border BuildFlyoutContent() {
     Grid::SetRow(footer, 2);
     layout.Children().Append(footer);
 
-    root.Child(layout);
+    // The tint rides on its own Border so it sits above the blurred backdrop
+    // but below the content, and carries the padding.
+    Border surface;
+    surface.CornerRadius({popupRadius, popupRadius, popupRadius, popupRadius});
+    surface.Padding({kCardInset, 12, kCardInset, 10});
+    if (blurAttached) {
+        surface.Background(MakeBrush(tintColor));
+    }
+    surface.Child(layout);
+
+    root.Child(surface);
     return root;
 }
 
 // ---------------------------------------------------------------------------
 // Section 16: flyout show / animate / dismiss
 // ---------------------------------------------------------------------------
+
+// Gap between the settled flyout and the taskbar edge. Applied as a margin
+// inside the flyout, so the slide still starts at the taskbar edge itself.
+static constexpr double kTaskbarGap = 12.0;
 
 static bool IsTaskbarAtTop() {
     if (!g_taskbarWnd) {
@@ -2422,7 +2894,9 @@ static void ShowMessFlyout(FrameworkElement const& target) {
                     if (height <= 0) {
                         height = 420.0;
                     }
-                    double start = height * g_flyoutAnimSign;
+                    // Include the margin, otherwise a sliver of the content
+                    // stays visible past the flyout's edge at the start.
+                    double start = (height + kTaskbarGap) * g_flyoutAnimSign;
                     transform.TranslateY(start);
                     content.Opacity(1.0);
 
@@ -2503,7 +2977,7 @@ static void ShowMessFlyout(FrameworkElement const& target) {
                 if (height <= 0) {
                     height = 420.0;
                 }
-                double end = (height + 16.0) * g_flyoutAnimSign;
+                double end = (height + kTaskbarGap + 8.0) * g_flyoutAnimSign;
 
                 Storyboard storyboard;
                 DoubleAnimation animation;
@@ -2568,6 +3042,12 @@ static void ShowMessFlyout(FrameworkElement const& target) {
         const bool atTop = IsTaskbarAtTop();
         g_flyoutAnimSign = atTop ? -1.0 : 1.0;
 
+        // The flyout's own bounds run all the way to the taskbar edge and clip
+        // the sliding content; this margin is what keeps the settled flyout
+        // clear of it.
+        content.Margin(atTop ? Thickness{0, kTaskbarGap, 0, 0}
+                             : Thickness{0, 0, 0, kTaskbarGap});
+
         Primitives::FlyoutPlacementMode placement =
             atTop ? Primitives::FlyoutPlacementMode::Bottom
                   : Primitives::FlyoutPlacementMode::Top;
@@ -2584,9 +3064,48 @@ static void ShowMessFlyout(FrameworkElement const& target) {
                     }
                     auto transform = target.TransformToVisual(rootContent);
                     auto point = transform.TransformPoint({0.f, 0.f});
-                    anchor = {point.X + (float)target.ActualWidth() * 0.5f,
-                              atTop ? point.Y + (float)target.ActualHeight()
-                                    : point.Y};
+
+                    // Follow the button horizontally, but keep the whole flyout
+                    // on the monitor: centring on a button parked at either end
+                    // of the taskbar would otherwise push it off-screen, which
+                    // is what made every button position look the same.
+                    const double width = (double)g_settings.popupWidth;
+                    double centreX =
+                        point.X + (double)target.ActualWidth() * 0.5;
+
+                    double workLeft = 0.0;
+                    double workRight = (double)rootContent.ActualWidth();
+                    HMONITOR monitor =
+                        MonitorFromWindow(g_taskbarWnd, MONITOR_DEFAULTTONEAREST);
+                    MONITORINFO monitorInfo{};
+                    monitorInfo.cbSize = sizeof(monitorInfo);
+                    POINT origin{0, 0};
+                    if (monitor && GetMonitorInfo(monitor, &monitorInfo) &&
+                        ClientToScreen(g_taskbarWnd, &origin)) {
+                        double scale = xamlRoot.RasterizationScale();
+                        if (scale <= 0.0) {
+                            scale = 1.0;
+                        }
+                        workLeft = (monitorInfo.rcWork.left - origin.x) / scale;
+                        workRight = (monitorInfo.rcWork.right - origin.x) / scale;
+                    }
+
+                    constexpr double kEdgeMargin = 8.0;
+                    double left = centreX - width * 0.5;
+                    double maxLeft = workRight - kEdgeMargin - width;
+                    double minLeft = workLeft + kEdgeMargin;
+                    if (maxLeft < minLeft) {
+                        maxLeft = minLeft;  // flyout wider than the work area
+                    }
+                    left = std::clamp(left, minLeft, maxLeft);
+
+                    // Anchor vertically on the taskbar's own edge, not the
+                    // button's, so the flyout emerges from exactly that line.
+                    // The resting gap comes from the content's margin instead
+                    // (set above), so the reveal wipes out of the taskbar edge
+                    // while the settled flyout still clears it.
+                    anchor = {(float)(left + width * 0.5),
+                              atTop ? (float)rootContent.ActualHeight() : 0.0f};
                 }
             }
         } catch (...) {
