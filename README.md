@@ -4,7 +4,7 @@
 
 [![Windhawk Mod](https://img.shields.io/badge/Windhawk-mod-blue)](https://windhawk.net/)
 [![Windows 11](https://img.shields.io/badge/Windows%2011-22H2%2B-0078D4)](https://www.microsoft.com/windows/windows-11)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 A small button sits in your taskbar showing what's being served right now — or
 how long until the next meal starts. Click it and a native-looking flyout slides
@@ -89,7 +89,15 @@ being served.
   cached.
 - Four button positions, plus spacing controls to sit alongside other mods.
 - Optionally pushes the taskbar icons aside so nothing overlaps.
+- **Multi-monitor** — put the button on the primary taskbar only, or on every
+  one. The flyout opens on whichever monitor you clicked.
+- **Editable meal timings** — all five serving windows are settings, so a mess
+  that moves a slot doesn't need a new version of the mod.
 - Hide the Snacks card if you don't use it.
+- The button matches the height of Windows' own tray buttons and stays
+  clickable right down to the screen edge, so you can throw the pointer at the
+  corner to hit it.
+- Follows light/dark theme switches without needing an Explorer restart.
 
 ---
 
@@ -126,13 +134,14 @@ being served.
 | --- | --- |
 | **Operating system** | Windows 11, version 22H2 or newer |
 | **Windhawk** | 1.4 or newer |
-| **Architecture** | x64 or ARM64 |
+| **Architecture** | x64 — which also covers ARM64 devices, where Explorer is a predefined shell process |
 
 > **Windows 10 is not supported.** The mod hooks the XAML taskbar, which
 > Windows 10 does not have. It will fail to load rather than misbehave.
 
-> **Primary taskbar only.** On a multi-monitor setup with taskbars on every
-> display, the button appears on the primary one.
+> **Multi-monitor.** `Show on` chooses between the primary taskbar only (the
+> default) and every taskbar. The flyout anchors to whichever taskbar you open
+> it from.
 
 > **Depends on a third-party site.** The menus come from
 > `messit.vinnovateit.com`, which this mod does not control. If that site
@@ -197,8 +206,9 @@ background.
 | **Button position** | Left of the system tray | Left edge of the taskbar, left of the tray, or either side of the clock |
 | **Button spacing (left)** | `4` | Gap to the left, in pixels. Also shifts the button right — raise it to clear another mod |
 | **Button spacing (right)** | `4` | Gap to the right, in pixels |
-| **Push the taskbar icons aside** | On | *Left edge position only.* Reserves room so Windows' icons move over instead of sitting underneath |
+| **Push the taskbar icons aside** | On | **Only does anything with "Left edge of the taskbar".** Reserves room so Windows' icons move over instead of sitting underneath. In the tray positions the tray lays the button out itself, so this has no effect |
 | **Maximum label width** | `180` | Longer text is truncated with an ellipsis |
+| **Show on** | The primary taskbar only | Or every taskbar, on a multi-monitor setup |
 
 ### Flyout appearance
 
@@ -217,6 +227,20 @@ background.
 | --- | --- | --- |
 | **Check for new menus automatically** | On | When off, the menu is only fetched via the flyout's reload button |
 
+### Meal timings
+
+All five serving windows are editable as `HH:MM-HH:MM`, so a mess that changes
+a slot does not need a new version of the mod. The defaults are the VIT Vellore
+timings listed under [How it works](#-how-it-works).
+
+| Setting | Default |
+| --- | --- |
+| **Breakfast (Mon-Fri)** | `07:00-09:00` |
+| **Breakfast (Sat & Sun)** | `07:30-09:30` |
+| **Lunch** | `12:30-14:30` |
+| **Snacks** | `16:30-18:00` |
+| **Dinner** | `19:00-21:00` |
+
 > **Matching a Taskbar Styler theme:** set **Flyout background** to `Custom`,
 > then copy your theme's values across. For the *Tinted Glass* theme
 > (`WindhawkBlur BlurAmount="18" TintColor="#80000000"`) the defaults already
@@ -228,7 +252,8 @@ background.
 
 ### Meal timings
 
-These are VIT Vellore's timings, built into the mod:
+These are the defaults — VIT Vellore's timings. All five are editable in the
+settings:
 
 | Meal | Mon–Fri | Sat & Sun |
 | --- | --- | --- |
@@ -298,6 +323,22 @@ current.
 </details>
 
 <details>
+<summary><b>The button doesn't appear on my second monitor</b></summary>
+
+Set **Show on** to *Every taskbar* — the default is the primary taskbar only.
+
+If it still doesn't appear, check the Windhawk log:
+
+- `GetTaskbarXamlRoot: CSecondaryTaskBand symbols not resolved` — your Windows
+  build doesn't expose the symbols secondary taskbars need. The primary taskbar
+  keeps working; this is why they're resolved as optional.
+- `GetTaskbarXamlRoot: taskband window not found` — the secondary taskbar's
+  internals aren't laid out as expected. Please
+  [open an issue](../../issues) with your build number (`winver`).
+
+</details>
+
+<details>
 <summary><b>The button overlaps another mod</b></summary>
 
 The mod can't see other mods' elements, so it can't route around them
@@ -349,8 +390,32 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 - **JSON:** `Windows.Data.Json`, so there's no vendored third-party parser.
 - **Blur:** a Composition effect graph (`CreateBackdropBrush` →
   `D2D1GaussianBlur`) exposed as a `XamlCompositionBrushBase`.
+- **Multi-monitor:** the `CSecondaryTaskBand` symbols are resolved as *optional*
+  hooks, so a build without them loses only secondary taskbars rather than
+  failing to load.
 
 </details>
+
+---
+
+## Changelog
+
+### 1.0.0
+
+First release.
+
+- Taskbar button showing the current meal, or a countdown to the next one.
+- Native XAML flyout with all four meals, day navigation and a reload button.
+- Automatic grouping into Main Items, Bread & Sides, Dairy, Drinks and Dessert.
+- Offline-first caching in Windhawk's per-mod storage, up to three months.
+- Four button positions, adjustable spacing, and optional space reservation so
+  the taskbar's own icons move aside.
+- **Multi-monitor:** primary taskbar only, or every taskbar.
+- **Editable meal timings** — all five serving windows.
+- Flyout appearance: width, corner radius (meal cards stay concentric), and
+  either Windows 11's own acrylic tint or a custom `#AARRGGBB` colour with an
+  adjustable blur radius.
+- Follows light/dark theme switches live.
 
 ---
 
@@ -365,16 +430,21 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
   — the references for reaching the taskbar's XAML root through
   `CTaskBand::GetTaskbarHost` and the `TaskbarHost::FrameHeight` prologue, the
   system-tray column insert/remove, and the `RunFromWindowThread` helper.
+  Both are MIT licensed.
 - **[Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler)**
-  — the reference for the Composition backdrop-blur brush.
-
-All of the above are MIT licensed.
+  — the Composition backdrop-blur brush. **GPL-3.0**, and its `XamlBlurBrush` is
+  itself derived from [TranslucentTB](https://github.com/TranslucentTB/TranslucentTB),
+  also GPL-3.0. This mod's blur is derived from it, which is why the licence
+  below is GPL-3.0.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**GPL-3.0** — see [LICENSE](LICENSE).
+
+The blur implementation is derived from Windows 11 Taskbar Styler (GPL-3.0), so
+this mod is GPL-3.0 as a whole rather than MIT.
 
 ---
 
