@@ -217,6 +217,7 @@ background.
 | **Flyout width** | `380` | In pixels |
 | **Flyout corner radius** | `8` | In pixels. Meal cards follow automatically, staying concentric |
 | **Show the Snacks card** | On | Hide the 16:30 snack if you don't use it |
+| **Extra dessert items** | *(empty)* | Comma-separated. If the site starts listing a dessert the mod doesn't recognise, add it here (e.g. `Rasgulla, Mango`) and it moves to the Dessert group. Matches a whole item or its last word, ignoring case — so `Cake` also catches `Brownie Cake` |
 | **Flyout background** | Match Windows 11 | `Match Windows 11` follows the OS and **ignores the two settings below**. `Custom` uses them |
 | **Custom background colour** | `#80000000` | `#AARRGGBB` (alpha first) or `#RRGGBB` for opaque |
 | **Custom blur amount** | `18` | Blur radius in pixels; `0` gives a flat surface |
@@ -225,7 +226,7 @@ background.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Check for new menus automatically** | On | When off, the menu is only fetched via the flyout's reload button |
+| **Check for new menus automatically** | On | Re-downloads the current month about once a day and keeps checking for a missing month. When off, the menu is only fetched via the flyout's reload button |
 
 ### Meal timings
 
@@ -268,14 +269,16 @@ Every item is sorted by the first rule it matches:
 
 | Group | Rule |
 | --- | --- |
-| **Dessert** | Starts with `Sweet:`, `Sweets:`, `Fruit:`, `Fruits:` or `Dessert:` — with or without a space before the colon — or contains *ice cream* |
-| **Dairy** | Exactly `Curd`, `Loose Curd`, `Thick Curd` or `Butter Milk` |
-| **Drinks** | Ends in *tea*, *coffee*, *milk*, *sharbat*, *juice*, *lassi* or *shake* |
-| **Bread & Sides** | Exactly `Bread`, `Butter` or `Jam` |
+| **Dessert** | Starts with `Sweet:`, `Sweets:`, `Fruit:`, `Fruits:` or `Dessert:` — with or without a space before the colon — or contains *ice cream*. Also, since the site started listing desserts without a label: a plain fruit name (`Banana`, `Papaya`, `Watermelon`…), or ends in *fruit*, *halwa*, *laddu*, *jamun*, *jalebi*, *kheer*, *payasam*, *kesari*, *burfi* and the like — plus anything in **Extra dessert items** |
+| **Dairy** | Exactly `Curd`, `Loose Curd`, `Thick Curd`, `Cup Curd`, `Butter Milk` or `Milk` |
+| **Beverages** | Ends in *tea*, *coffee*, *milk*, *sharbat*, *juice*, *lassi* or *shake* — so flavoured milks like `Rose Milk` land here, while plain `Milk` is Dairy |
+| **Bread & Sides** | Exactly `Bread`, `Butter`, `Jam`, `Bread Butter Jam` or `BBJ` |
 | **Main Items** | Everything else |
 
 Matching is on whole items and final words, never substrings — so *Curd Rice*
-stays a main dish while *Cold Badam Milk* correctly becomes a drink.
+stays a main dish while *Cold Badam Milk* correctly becomes a beverage. Whole-item
+matches ignore spaces, because the site writes both `Water Melon` and
+`Watermelon`, `Butter milk` and `Buttermilk`.
 
 ### Data and caching
 
@@ -289,9 +292,11 @@ Each file covers one month. Cached copies live in Windhawk's own storage folder
 for this mod, which **Windhawk deletes when the mod is removed** — so the mod
 leaves nothing behind on your disk.
 
-- If the current month is already cached, **nothing is downloaded**.
-- If it's missing, the mod retries every 6 hours, backing off from 15 minutes on
-  network errors.
+- The current month is **re-downloaded about once a day** — the site sometimes
+  revises a file after publishing it (in September 2026 the breakfast sides
+  and drinks were missing for the first week).
+- If the month is missing altogether, the mod retries every 6 hours, backing
+  off from 15 minutes on network errors.
 - Up to three months are kept, so day-navigation crosses month boundaries.
 - The reload button at the bottom of the flyout forces a check immediately.
 
@@ -400,13 +405,30 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 
 ## Changelog
 
+### 1.0.1
+
+- **Desserts are recognised again.** In September 2026 the site stopped
+  labelling desserts (`Sweet: Gulab Jamun` became just `Gulab Jamun`), so they
+  were all landing in Main Items. The mod now also recognises bare fruit names
+  and common sweets by their last word (`halwa`, `jamun`, `laddu`, `payasam`…).
+  The label rule still works, in case the site switches back.
+- New **Extra dessert items** setting, so the next time the site changes its
+  format you can patch the list yourself rather than wait for a new version.
+- **The current month is refreshed daily.** The site revised September's file
+  a week after publishing it, adding the breakfast sides and drinks; the mod
+  used to keep its first download for the whole month.
+- *Drinks* renamed to **Beverages**. Plain `Milk` now sits under Dairy.
+  Whole-item matching ignores spaces, so `Water Melon` and `Watermelon` are
+  treated alike.
+
 ### 1.0.0
 
 First release.
 
 - Taskbar button showing the current meal, or a countdown to the next one.
 - Native XAML flyout with all four meals, day navigation and a reload button.
-- Automatic grouping into Main Items, Bread & Sides, Dairy, Drinks and Dessert.
+- Automatic grouping into Main Items, Bread & Sides, Dairy, Drinks and Dessert
+  (Drinks renamed to Beverages in 1.0.1).
 - Offline-first caching in Windhawk's per-mod storage, up to three months.
 - Four button positions, adjustable spacing, and optional space reservation so
   the taskbar's own icons move aside.
