@@ -2,7 +2,7 @@
 // @id              vit-mess-menu-taskbar
 // @name            VIT Mess Menu Taskbar Flyout
 // @description     Shows the VIT Vellore hostel mess menu on the Windows 11 taskbar, with a native flyout for the full day's menu.
-// @version         1.0.0
+// @version         1.0.1
 // @author          ashishkupadhyay
 // @github          https://github.com/ashishkupadhyay
 // @include         explorer.exe
@@ -151,6 +151,9 @@ backdrop blur is derived from GPL-3.0 code.
   $description: Pixels. The meal cards follow automatically, staying concentric with the flyout's own corners.
 - showSnacks: true
   $name: Show the Snacks card
+- extraDessertItems: ""
+  $name: Extra dessert items
+  $description: "Comma-separated. The site sometimes lists desserts without a \"Sweet:\" or \"Fruits:\" label; the common ones are recognised already, and anything it starts listing that is not can be added here, e.g. Rasgulla, Mango. An entry matches a whole item or its last word, ignoring case."
 - backgroundMode: auto
   $name: Flyout background
   $description: Match Windows follows the built-in Windows 11 flyout styling and ignores the two settings below. Use Custom to match a Taskbar Styler theme instead.
@@ -301,6 +304,16 @@ struct ModSettings {
 
 static ModSettings g_settings;
 
+// The user's extra dessert keywords, already normalised (see NormalizeKey).
+// Kept out of ModSettings for the reason given above: this is a list of
+// strings, rewritten by LoadSettings while the taskbar thread may be in the
+// middle of classifying a menu. Readers take a snapshot of the shared_ptr
+// under the lock and never touch the vector itself while unlocked.
+static std::mutex g_userDessertKeywordsMutex;
+static std::shared_ptr<const std::vector<std::wstring>> g_userDessertKeywords;
+
+static std::wstring NormalizeKey(const std::wstring& text);
+
 // Wh_GetStringSetting never returns null -- it yields L"" when unset or on
 // error -- so an empty test is all that is needed. StringSetting is RAII, so
 // Wh_FreeStringSetting cannot be missed.
@@ -420,6 +433,31 @@ static bool ParseTimeRange(const std::wstring& text, MealWindow& out) {
     return true;
 }
 
+// "Rasgulla, Mango, " -> {"rasgulla", "mango"}. Empty entries are dropped so a
+// trailing comma cannot turn every item into a dessert.
+static void LoadUserDessertKeywords() {
+    std::wstring text = GetStringSetting(L"extraDessertItems", L"");
+    auto keywords = std::make_shared<std::vector<std::wstring>>();
+
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t comma = text.find(L',', start);
+        std::wstring piece = NormalizeKey(text.substr(
+            start, comma == std::wstring::npos ? std::wstring::npos
+                                               : comma - start));
+        if (!piece.empty()) {
+            keywords->push_back(std::move(piece));
+        }
+        if (comma == std::wstring::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+
+    std::lock_guard<std::mutex> lock(g_userDessertKeywordsMutex);
+    g_userDessertKeywords = std::move(keywords);
+}
+
 static void LoadMealWindow(PCWSTR key, PCWSTR fallback, MealWindow& target) {
     std::wstring text = GetStringSetting(key, fallback);
     if (ParseTimeRange(text, target)) {
@@ -457,6 +495,7 @@ static void LoadSettings() {
     g_settings.popupCornerRadius =
         std::clamp(Wh_GetIntSetting(L"popupCornerRadius"), 0, 32);
     g_settings.showSnacks = Wh_GetIntSetting(L"showSnacks") != 0;
+    LoadUserDessertKeywords();
 
     g_settings.customBackground =
         (GetStringSetting(L"backgroundMode", L"auto") == L"custom");
@@ -790,6 +829,57 @@ static Group ClassifyItem(const std::wstring& item) {
         return Group::Dessert;
     }
 
+    // In September 2026 the site dropped the labels altogether and started
+    // listing desserts bare -- "Gulab Jamun", "Jalebi", "Seasonal Fruit",
+    // "Papaya". The label rule above stays in case they come back; this
+    // catches the bare form with the same discipline as the other groups:
+    // whole item or last word, never substring. So "Raw Banana Fry" and "Raw
+    // Banana Bajji" stay main dishes while "Banana" does not, and "Sweet corn
+    // chaat" is not a dessert.
+    //
+    // No cake here on purpose. Cake only ever shows up as the snack itself
+    // ("Brownie Cake, Tea, Coffee, Milk"), and filing it under Dessert would
+    // leave Main Items empty -- the taskbar button would then read "Tea •
+    // Coffee • Milk" during snacks.
+    static const wchar_t* const kFruits[] = {
+        L"banana",   L"papaya",  L"watermelon",  L"muskmelon", L"grapes",
+        L"apple",    L"orange",  L"pineapple",   L"guava",     L"mango",
+        L"pomegranate", L"sapota", L"chikoo",    L"fruit salad"};
+    if (InList(key, kFruits, ARRAYSIZE(kFruits))) {
+        return Group::Dessert;
+    }
+
+    // "Seasonal Fruit", "Cut Fruits", "Bread Halwa", "Gulab Jamun", "Boondi
+    // Laddu", "Dal Payasam", "Mysore Pak".
+    static const wchar_t* const kDessertTails[] = {
+        L"fruit",   L"fruits",  L"halwa",   L"laddu",    L"ladoo",
+        L"laddoo",  L"jamun",   L"jalebi",  L"kheer",    L"payasam",
+        L"kesari",  L"burfi",   L"barfi",   L"rasgulla", L"rasmalai",
+        L"badusha", L"jangri",  L"peda",    L"phirni",   L"kulfi",
+        L"custard", L"pudding", L"pak",     L"rabri",    L"poli"};
+    const std::wstring lastWord = LastWord(key);
+    if (InList(lastWord, kDessertTails, ARRAYSIZE(kDessertTails))) {
+        return Group::Dessert;
+    }
+
+    // Whatever the user added in settings, for the next time the site changes
+    // its mind. Snapshot the list under the lock; LoadSettings may be swapping
+    // it on another thread.
+    {
+        std::shared_ptr<const std::vector<std::wstring>> userKeywords;
+        {
+            std::lock_guard<std::mutex> lock(g_userDessertKeywordsMutex);
+            userKeywords = g_userDessertKeywords;
+        }
+        if (userKeywords) {
+            for (const std::wstring& keyword : *userKeywords) {
+                if (key == keyword || lastWord == keyword) {
+                    return Group::Dessert;
+                }
+            }
+        }
+    }
+
     static const wchar_t* const kDairy[] = {L"curd", L"loose curd",
                                             L"thick curd", L"butter milk",
                                             L"buttermilk"};
@@ -801,7 +891,7 @@ static Group ClassifyItem(const std::wstring& item) {
     static const wchar_t* const kDrinkTails[] = {L"tea",   L"coffee", L"milk",
                                                  L"sharbat", L"juice",
                                                  L"lassi", L"shake"};
-    if (InList(LastWord(key), kDrinkTails, ARRAYSIZE(kDrinkTails))) {
+    if (InList(lastWord, kDrinkTails, ARRAYSIZE(kDrinkTails))) {
         return Group::Drinks;
     }
 
