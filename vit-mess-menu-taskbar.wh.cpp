@@ -43,6 +43,9 @@ Pick your **Hostel** and **Mess** in the settings, and that is it. The mod
 downloads the right file from `messit.vinnovateit.com` by itself and keeps it
 up to date. There is nothing to import and no files to manage.
 
+If your campus publishes a menu in the same JSON shape somewhere else, point
+**Custom menu URL** at it.
+
 ## Meal timings
 
 These are the defaults, and they are the VIT Vellore timings. All five windows
@@ -96,6 +99,8 @@ backdrop blur is derived from GPL-3.0 code.
   the taskbar's XAML root through `CTaskBand::GetTaskbarHost` and the
   `TaskbarHost::FrameHeight` prologue, the system-tray column insert/remove, and
   the `RunFromWindowThread` helper.
+- **Fluent UI System Icons** by Microsoft (MIT) — the "Food" glyph on the
+  taskbar button.
 */
 // ==/WindhawkModReadme==
 
@@ -112,6 +117,9 @@ backdrop blur is derived from GPL-3.0 code.
   - special: Special (Mess 1)
   - veg: Veg (Mess 2)
   - nonveg: Non-Veg (Mess 3)
+- menuUrl: ""
+  $name: Custom menu URL
+  $description: "Leave empty to use messit.vinnovateit.com. Otherwise the full URL of a JSON file in the same format. {hostel} and {mess} in the URL are replaced with the numbers chosen above, e.g. https://example.com/menu/hostel-{hostel}-mess-{mess}.json. Changing this clears the cached menus."
 - buttonMode: expanded
   $name: Taskbar button
   $description: Expanded shows the current meal or the next-meal countdown. Compact shows only the icon.
@@ -325,6 +333,16 @@ static void CurrentSource(int& hostel, int& mess) {
 static std::mutex g_userDessertKeywordsMutex;
 static std::shared_ptr<const std::vector<std::wstring>> g_userDessertKeywords;
 
+// The custom menu URL template, or empty for the built-in host. Same
+// arrangement: written by LoadSettings, snapshotted by the network worker.
+static std::mutex g_menuUrlMutex;
+static std::shared_ptr<const std::wstring> g_menuUrlTemplate;
+
+static std::wstring GetMenuUrlTemplate() {
+    std::lock_guard<std::mutex> lock(g_menuUrlMutex);
+    return g_menuUrlTemplate ? *g_menuUrlTemplate : std::wstring();
+}
+
 static std::wstring NormalizeKey(const std::wstring& text);
 
 // Wh_GetStringSetting never returns null -- it yields L"" when unset or on
@@ -488,6 +506,19 @@ static void LoadSettings() {
     g_settings.mess = (mess == L"special") ? 1 : (mess == L"nonveg") ? 3 : 2;
     g_sourceKey.store(g_settings.hostel * 10 + g_settings.mess);
 
+    {
+        // Trimmed, so a stray space cannot turn a valid URL into a bad one.
+        std::wstring url = GetStringSetting(L"menuUrl", L"");
+        size_t first = url.find_first_not_of(L" \t\r\n");
+        size_t last = url.find_last_not_of(L" \t\r\n");
+        url = (first == std::wstring::npos)
+                  ? std::wstring()
+                  : url.substr(first, last - first + 1);
+        auto shared = std::make_shared<const std::wstring>(std::move(url));
+        std::lock_guard<std::mutex> lock(g_menuUrlMutex);
+        g_menuUrlTemplate = std::move(shared);
+    }
+
     g_settings.compact = (GetStringSetting(L"buttonMode", L"expanded") == L"compact");
     std::wstring position = GetStringSetting(L"position", L"tray_left");
     g_settings.position =
@@ -552,11 +583,49 @@ static constexpr int kMealCount = (int)Meal::Count;
 static const wchar_t* const kMealNames[kMealCount] = {L"Breakfast", L"Lunch",
                                                       L"Snacks", L"Dinner"};
 
-// Breakfast, Lunch, Snacks, Dinner.
-static const wchar_t* const kMealEmoji[kMealCount] = {
-    L"\U0001F373", L"\U0001F35B", L"☕", L"\U0001F319"};
-
-static const wchar_t* const kTaskbarEmoji = L"\U0001F37D";
+// The taskbar icon: Fluent UI System Icons "Food" (ic_fluent_food_48_regular,
+// MIT), as XAML path data so it renders through a PathIcon like the tray's
+// own glyphs -- monochrome, theme-aware, no image decoding. "F1" selects the
+// nonzero fill rule the SVG uses; XAML's default is even-odd.
+// https://github.com/microsoft/fluentui-system-icons
+static constexpr int kTaskbarIconCanvas = 48;
+static const wchar_t* const kTaskbarIconData =
+    L"F1 M7.97791 6.72626C8.23786 5.13494 9.61649 4 11.2028 4C12.0065 4 "
+    L"12.7431 4.28759 13.3152 4.76548C13.914 4.28645 14.6735 4 15.5 4C16.3265 "
+    L"4 17.086 4.28645 17.6848 4.76548C18.2569 4.28759 18.9935 4 19.7972 "
+    L"4C21.3835 4 22.7621 5.13495 23.0221 6.72627C23.3899 8.97815 24 13.1284 "
+    L"24 16C24 18.8478 22.5983 21.3683 20.4526 22.9087C19.8122 23.3685 19.5 "
+    L"23.9239 19.5 24.3989C19.5 24.437 19.5011 24.4631 19.5035 24.4932C19.5912 "
+    L"25.5888 20.5 36.9682 20.5 39C20.5 41.7614 18.2614 44 15.5 44C12.7386 44 "
+    L"10.5 41.7614 10.5 39C10.5 36.9682 11.4088 25.5888 11.4965 24.4932C11.4989 "
+    L"24.4631 11.5 24.437 11.5 24.3989C11.5 23.9239 11.1878 23.3685 10.5474 "
+    L"22.9087C8.40173 21.3683 7 18.8478 7 16C7 13.1284 7.61005 8.97815 7.97791 "
+    L"6.72626ZM19 16.75C19 17.4404 18.4404 18 17.75 18C17.0596 18 16.5 17.4404 "
+    L"16.5 16.75V7.5C16.5 6.94772 16.0523 6.5 15.5 6.5C14.9477 6.5 14.5 "
+    L"6.94772 14.5 7.5V16.75C14.5 17.4404 13.9404 18 13.25 18C12.5596 18 12 "
+    L"17.4404 12 16.75V7.29725C12 6.85694 11.6431 6.5 11.2028 6.5C10.8154 6.5 "
+    L"10.5034 6.77283 10.4452 7.12931C10.0747 9.3972 9.5 13.3587 9.5 16C9.5 "
+    L"18.0086 10.4857 19.7869 12.0054 20.8779C13.0246 21.6096 14 22.8308 14 "
+    L"24.3989C14 24.4955 13.9969 24.5886 13.9885 24.6928C13.8934 25.8804 13 "
+    L"37.0998 13 39C13 40.3807 14.1193 41.5 15.5 41.5C16.8807 41.5 18 40.3807 "
+    L"18 39C18 37.0998 17.1066 25.8804 17.0115 24.6928C17.0031 24.5886 17 "
+    L"24.4955 17 24.3989C17 22.8308 17.9754 21.6096 18.9946 20.8779C20.5143 "
+    L"19.7869 21.5 18.0086 21.5 16C21.5 13.3587 20.9253 9.3972 20.5548 "
+    L"7.12931C20.4966 6.77283 20.1846 6.5 19.7972 6.5C19.3569 6.5 19 6.85694 "
+    L"19 7.29725V16.75ZM36.5 6.53169V22.75C36.5 23.3401 36.6885 26.0805 "
+    L"36.8952 29.0854L36.9093 29.2894C37.1889 33.3551 37.5 37.8909 37.5 "
+    L"39C37.5 40.3807 36.3807 41.5 35 41.5C33.6193 41.5 32.5 40.3807 32.5 "
+    L"39C32.5 38.0176 32.7453 34.014 32.9973 30.1803C33.1222 28.2802 33.2471 "
+    L"26.4445 33.3408 25.0837C33.3876 24.4033 33.4267 23.8417 33.454 "
+    L"23.4503L33.4969 22.8379C33.5213 22.492 33.4009 22.1515 33.1644 "
+    L"21.8978C32.928 21.6441 32.5968 21.5 32.25 21.5H29.25C28.8358 21.5 28.5 "
+    L"21.1642 28.5 20.75V15.25C28.5 10.6702 32.0186 6.91212 36.5 "
+    L"6.53169ZM30.9097 24L30.8467 24.912C30.7529 26.2744 30.6278 28.1128 "
+    L"30.5027 30.0164C30.2547 33.7899 30 37.9113 30 39C30 41.7614 32.2386 44 "
+    L"35 44C37.7614 44 40 41.7614 40 39C40 37.7912 39.6846 33.2057 39.4123 "
+    L"29.2478L39.4034 29.1178C39.1852 25.9458 39 23.2397 39 22.75V5.25C39 "
+    L"4.55964 38.4404 4 37.75 4H37.25C31.0368 4 26 9.0368 26 15.25V20.75C26 "
+    L"22.5449 27.4551 24 29.25 24H30.9097Z";
 
 enum class Group { Main = 0, BreadSides, Dairy, Beverages, Dessert, Count };
 
@@ -1219,15 +1288,63 @@ static constexpr DWORD kMaxResponseBytes = 2 * 1024 * 1024;
 // read: closing the handle makes the blocking call return immediately.
 static std::atomic<void*> g_activeRequest{nullptr};
 
-static std::wstring BuildMenuPath(int hostel, int mess) {
-    return L"/menu-data/hostel-" + std::to_wstring(hostel) + L"-mess-" +
-           std::to_wstring(mess) + L".json";
+static void ReplaceAll(std::wstring& text, const wchar_t* token,
+                       const std::wstring& value) {
+    const size_t length = wcslen(token);
+    for (size_t pos = text.find(token); pos != std::wstring::npos;
+         pos = text.find(token, pos + value.size())) {
+        text.replace(pos, length, value);
+    }
 }
 
-static bool HttpGetJson(const std::wstring& path, std::string& out,
+// The URL to download for this hostel/mess: the custom template with its
+// placeholders filled in, or the built-in messit.vinnovateit.com path.
+static std::wstring ResolveMenuUrl(int hostel, int mess) {
+    std::wstring url = GetMenuUrlTemplate();
+    if (url.empty()) {
+        url = std::wstring(L"https://") + kMenuHost + L"/menu-data/hostel-" +
+              std::to_wstring(hostel) + L"-mess-" + std::to_wstring(mess) +
+              L".json";
+        return url;
+    }
+    ReplaceAll(url, L"{hostel}", std::to_wstring(hostel));
+    ReplaceAll(url, L"{mess}", std::to_wstring(mess));
+    return url;
+}
+
+static bool HttpGetJson(const std::wstring& url, std::string& out,
                         std::wstring& error) {
     out.clear();
     error.clear();
+
+    // Split the URL up front so a typo in the custom setting fails with a
+    // clear message rather than a connection error. Only http and https are
+    // meaningful here.
+    URL_COMPONENTS parts{};
+    parts.dwStructSize = sizeof(parts);
+    parts.dwSchemeLength = (DWORD)-1;
+    parts.dwHostNameLength = (DWORD)-1;
+    parts.dwUrlPathLength = (DWORD)-1;
+    parts.dwExtraInfoLength = (DWORD)-1;
+    if (!WinHttpCrackUrl(url.c_str(), (DWORD)url.size(), 0, &parts) ||
+        !parts.lpszHostName || parts.dwHostNameLength == 0 ||
+        (parts.nScheme != INTERNET_SCHEME_HTTPS &&
+         parts.nScheme != INTERNET_SCHEME_HTTP)) {
+        error = L"The menu URL is not valid";
+        return false;
+    }
+    const bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+    const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
+    std::wstring path = parts.lpszUrlPath
+                            ? std::wstring(parts.lpszUrlPath,
+                                           parts.dwUrlPathLength)
+                            : std::wstring();
+    if (parts.lpszExtraInfo && parts.dwExtraInfoLength) {
+        path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+    }
+    if (path.empty()) {
+        path = L"/";
+    }
 
     HINTERNET session = WinHttpOpen(L"MessMenuWindhawkMod/1.0",
                                     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
@@ -1251,8 +1368,8 @@ static bool HttpGetJson(const std::wstring& path, std::string& out,
     WinHttpSetOption(session, WINHTTP_OPTION_DECOMPRESSION, &decompression,
                      sizeof(decompression));
 
-    HINTERNET connection = WinHttpConnect(session, kMenuHost,
-                                          INTERNET_DEFAULT_HTTPS_PORT, 0);
+    HINTERNET connection =
+        WinHttpConnect(session, host.c_str(), parts.nPort, 0);
     if (!connection) {
         error = L"Could not reach the server";
         WinHttpCloseHandle(session);
@@ -1261,7 +1378,7 @@ static bool HttpGetJson(const std::wstring& path, std::string& out,
 
     HINTERNET request = WinHttpOpenRequest(
         connection, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+        WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
     if (!request) {
         error = L"Could not create the request";
         WinHttpCloseHandle(connection);
@@ -1380,17 +1497,19 @@ static void PruneOldCacheFiles(int hostel, int mess, int keepFromMonthKey) {
     FindClose(find);
 }
 
-// Switching hostel or mess leaves the old source's files behind, since
-// PruneOldCacheFiles only ever looks at the current prefix. Windhawk would
-// delete them with the folder on removal, but there is no reason to keep them
-// until then. Only our own "h<n>m<n>-YYYY-MM.json" names are touched.
-static void PruneOtherSourceCacheFiles(int hostel, int mess) {
+// Deletes every cached month except those with `keepPrefix`; an empty prefix
+// deletes them all. Two callers: switching hostel or mess leaves the old
+// source's files behind (PruneOldCacheFiles only ever looks at the current
+// prefix), and changing the menu URL invalidates everything, because the
+// file names carry only the hostel/mess pair and not where it came from. Only
+// our own "h<n>m<n>-YYYY-MM.json" names are touched.
+static void PruneCacheFilesExcept(const std::wstring& keepPrefix) {
     std::wstring directory = GetCacheDirectory();
     if (directory.empty()) {
         return;
     }
 
-    const std::wstring keep = CacheFilePrefix(hostel, mess);
+    const std::wstring& keep = keepPrefix;
     std::wstring pattern = directory + L"\\h*m*-*.json";
     WIN32_FIND_DATAW findData{};
     HANDLE find = FindFirstFileW(pattern.c_str(), &findData);
@@ -1405,12 +1524,12 @@ static void PruneOtherSourceCacheFiles(int hostel, int mess) {
             name[4] != L'-' || !iswdigit(name[1]) || !iswdigit(name[3])) {
             continue;
         }
-        if (name.compare(0, keep.size(), keep) == 0) {
+        if (!keep.empty() && name.compare(0, keep.size(), keep) == 0) {
             continue;
         }
         std::wstring full = directory + L"\\" + name;
         DeleteFileW(full.c_str());
-        Wh_Log(L"PruneOtherSourceCacheFiles: removed %s", name.c_str());
+        Wh_Log(L"PruneCacheFilesExcept: removed %s", name.c_str());
     } while (FindNextFileW(find, &findData));
 
     FindClose(find);
@@ -1420,7 +1539,7 @@ static void PruneOtherSourceCacheFiles(int hostel, int mess) {
 static void LoadCacheFromDisk() {
     MenuStore store;
     CurrentSource(store.hostel, store.mess);
-    PruneOtherSourceCacheFiles(store.hostel, store.mess);
+    PruneCacheFilesExcept(CacheFilePrefix(store.hostel, store.mess));
 
     std::wstring directory = GetCacheDirectory();
     if (!directory.empty()) {
@@ -2348,6 +2467,7 @@ static Style GetTaskbarButtonStyle(bool light) {
 struct TaskbarEntry {
     HWND taskbarWnd = nullptr;
     Button button{nullptr};
+    PathIcon icon{nullptr};
     TextBlock label{nullptr};
     Grid injectionParent{nullptr};
     // -1 means we appended without adding a column (taskbar-area positions).
@@ -2621,8 +2741,56 @@ static void UpdateTaskbarLabel() {
 
 static void ShowMessFlyout(FrameworkElement const& target);
 
-// Fills entry.button and entry.label. The entry must already be in g_taskbars,
-// so the handlers below can find it again.
+// The 48-unit Fluent glyph scaled to tray-icon size. The PathIcon sits at its
+// designed offset inside a 48x48 canvas and the Viewbox scales the canvas, so
+// the glyph keeps the padding the icon set designed in rather than being
+// stretched to its own bounds. Returns the element to place; `icon` receives
+// the PathIcon so its Foreground can follow the theme.
+static FrameworkElement MakeTaskbarIcon(bool light, PathIcon& icon) {
+    icon = nullptr;
+
+    // Geometry has no public parser in C++/WinRT, so the path mini-language
+    // goes through XamlReader.
+    static const wchar_t* kIconXaml =
+        L"<PathIcon xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/"
+        L"presentation\" HorizontalAlignment=\"Left\" "
+        L"VerticalAlignment=\"Top\" Data=\"%DATA%\"/>";
+    std::wstring xaml = kIconXaml;
+    xaml.replace(xaml.find(L"%DATA%"), 6, kTaskbarIconData);
+
+    try {
+        icon = Markup::XamlReader::Load(xaml).try_as<PathIcon>();
+    } catch (...) {
+        Wh_Log(L"MakeTaskbarIcon: XamlReader failed");
+    }
+    if (!icon) {
+        // Should never happen with fixed data, but a text fallback beats an
+        // invisible button.
+        TextBlock fallback;
+        fallback.Text(L"•");
+        fallback.FontSize(14);
+        fallback.Foreground(MakeBrush(TextPrimaryColor(light)));
+        fallback.VerticalAlignment(VerticalAlignment::Center);
+        return fallback;
+    }
+    icon.Foreground(MakeBrush(TextPrimaryColor(light)));
+
+    Grid canvas;
+    canvas.Width(kTaskbarIconCanvas);
+    canvas.Height(kTaskbarIconCanvas);
+    canvas.Children().Append(icon);
+
+    Viewbox viewbox;
+    viewbox.Width(16);
+    viewbox.Height(16);
+    viewbox.Stretch(Stretch::Uniform);
+    viewbox.VerticalAlignment(VerticalAlignment::Center);
+    viewbox.Child(canvas);
+    return viewbox;
+}
+
+// Fills entry.button, entry.icon and entry.label. The entry must already be in
+// g_taskbars, so the handlers below can find it again.
 static void BuildTaskbarButton(bool light, TaskbarEntry& entry) {
     Button button;
     if (auto style = GetTaskbarButtonStyle(light)) {
@@ -2642,12 +2810,7 @@ static void BuildTaskbarButton(bool light, TaskbarEntry& entry) {
     panel.Orientation(Orientation::Horizontal);
     panel.VerticalAlignment(VerticalAlignment::Center);
 
-    TextBlock icon;
-    icon.Text(kTaskbarEmoji);
-    icon.FontFamily(FontFamily(L"Segoe UI Emoji"));
-    icon.FontSize(14);
-    icon.VerticalAlignment(VerticalAlignment::Center);
-    panel.Children().Append(icon);
+    panel.Children().Append(MakeTaskbarIcon(light, entry.icon));
 
     if (!g_settings.compact) {
         TextBlock label;
@@ -2697,6 +2860,10 @@ static void BuildTaskbarButton(bool light, TaskbarEntry& entry) {
                     sender.as<Control>().Style(style);
                 }
                 if (auto* entry = FindEntryForButton(sender)) {
+                    if (entry->icon) {
+                        entry->icon.Foreground(
+                            MakeBrush(TextPrimaryColor(nowLight)));
+                    }
                     if (entry->label) {
                         entry->label.Foreground(
                             MakeBrush(TextPrimaryColor(nowLight)));
@@ -2850,6 +3017,7 @@ static void RemoveTaskbarButtonFrom(TaskbarEntry& entry) {
     }
 
     entry.button = nullptr;
+    entry.icon = nullptr;
     entry.label = nullptr;
     entry.injectionParent = nullptr;
     entry.injectedColumn = -1;
@@ -3135,7 +3303,7 @@ static Border BuildMealCard(Meal meal, const DayMenu& day, bool light,
 
     StackPanel content;
 
-    // Header row: emoji + name on the left, countdown on the right.
+    // Header row: meal name on the left, countdown on the right.
     Grid header;
     header.ColumnDefinitions().Append([] {
         ColumnDefinition definition;
@@ -3148,25 +3316,11 @@ static Border BuildMealCard(Meal meal, const DayMenu& day, bool light,
         return definition;
     }());
 
-    StackPanel titlePanel;
-    titlePanel.Orientation(Orientation::Horizontal);
-    titlePanel.VerticalAlignment(VerticalAlignment::Center);
-
-    TextBlock emoji;
-    emoji.Text(kMealEmoji[(int)meal]);
-    emoji.FontFamily(FontFamily(L"Segoe UI Emoji"));
-    emoji.FontSize(14);
-    emoji.VerticalAlignment(VerticalAlignment::Center);
-    titlePanel.Children().Append(emoji);
-
     auto title = MakeTextBlock(kMealNames[(int)meal], 14,
                                TextPrimaryColor(light), true);
-    title.Margin({8, 0, 0, 0});
     title.VerticalAlignment(VerticalAlignment::Center);
-    titlePanel.Children().Append(title);
-
-    Grid::SetColumn(titlePanel, 0);
-    header.Children().Append(titlePanel);
+    Grid::SetColumn(title, 0);
+    header.Children().Append(title);
 
     auto countdown = MakeTextBlock(countdownText, 11, TextTertiaryColor(light));
     countdown.HorizontalAlignment(HorizontalAlignment::Right);
@@ -4260,6 +4414,10 @@ static HANDLE g_kickEvent = nullptr;
 // never on whichever thread Windhawk calls Wh_ModSettingsChanged from.
 static std::atomic<bool> g_reloadCacheRequested{false};
 
+// Set with g_reloadCacheRequested when the menu URL changes: every cached
+// file came from the old source and none of them is trustworthy any more.
+static std::atomic<bool> g_purgeCacheRequested{false};
+
 static constexpr DWORD kIdleIntervalMs = 6 * 60 * 60 * 1000;   // 6 hours
 static constexpr DWORD kFirstBackoffMs = 15 * 60 * 1000;       // 15 minutes
 
@@ -4306,7 +4464,7 @@ static bool PerformFetch() {
 
     std::string body;
     std::wstring error;
-    bool ok = HttpGetJson(BuildMenuPath(hostel, mess), body, error);
+    bool ok = HttpGetJson(ResolveMenuUrl(hostel, mess), body, error);
 
     ParsedMonth parsed;
     if (ok) {
@@ -4393,6 +4551,9 @@ static DWORD WINAPI NetThreadProc(void*) {
         }
 
         if (g_reloadCacheRequested.exchange(false)) {
+            if (g_purgeCacheRequested.exchange(false)) {
+                PruneCacheFilesExcept(L"");
+            }
             LoadCacheFromDisk();
             NotifyUiDataChanged();
         }
@@ -4730,10 +4891,12 @@ void Wh_ModSettingsChanged() {
 
     const int oldHostel = g_settings.hostel;
     const int oldMess = g_settings.mess;
+    const std::wstring oldUrl = GetMenuUrlTemplate();
 
     LoadSettings();
 
-    const bool sourceChanged =
+    const bool urlChanged = (oldUrl != GetMenuUrlTemplate());
+    const bool sourceChanged = urlChanged ||
         (oldHostel != g_settings.hostel) || (oldMess != g_settings.mess);
 
     HWND hWnd = FindCurrentProcessTaskbarWnd();
@@ -4764,7 +4927,8 @@ void Wh_ModSettingsChanged() {
     if (sourceChanged) {
         // A different hostel/mess is a different file entirely: drop the loaded
         // menu now so the flyout cannot show the old mess's food, then let the
-        // worker reload the cache and fetch.
+        // worker reload the cache and fetch. A different URL invalidates the
+        // cache files as well, since they are named by hostel/mess alone.
         {
             std::lock_guard<std::mutex> lock(g_dataMutex);
             g_store.days.clear();
@@ -4772,6 +4936,9 @@ void Wh_ModSettingsChanged() {
             g_store.mess = g_settings.mess;
             g_lastFetchError.clear();
             g_storeVersion.fetch_add(1);
+        }
+        if (urlChanged) {
+            g_purgeCacheRequested.store(true);
         }
         g_reloadCacheRequested.store(true);
         KickFetch();
