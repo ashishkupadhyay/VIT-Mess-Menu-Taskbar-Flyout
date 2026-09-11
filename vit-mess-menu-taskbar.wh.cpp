@@ -305,6 +305,18 @@ struct ModSettings {
 
 static ModSettings g_settings;
 
+// hostel * 10 + mess, published as one word. The worker snapshots the pair
+// while LoadSettings may be rewriting g_settings on another thread; read
+// separately, a fetch could pair the new hostel with the old mess and cache
+// that response under a file name it does not belong to.
+static std::atomic<int> g_sourceKey{12};
+
+static void CurrentSource(int& hostel, int& mess) {
+    const int key = g_sourceKey.load();
+    hostel = key / 10;
+    mess = key % 10;
+}
+
 // The user's extra dessert keywords, already normalised (see NormalizeKey).
 // Kept out of ModSettings for the reason given above: this is a list of
 // strings, rewritten by LoadSettings while the taskbar thread may be in the
@@ -474,6 +486,7 @@ static void LoadSettings() {
 
     std::wstring mess = GetStringSetting(L"mess", L"veg");
     g_settings.mess = (mess == L"special") ? 1 : (mess == L"nonveg") ? 3 : 2;
+    g_sourceKey.store(g_settings.hostel * 10 + g_settings.mess);
 
     g_settings.compact = (GetStringSetting(L"buttonMode", L"expanded") == L"compact");
     std::wstring position = GetStringSetting(L"position", L"tray_left");
@@ -703,22 +716,33 @@ static MealState ComputeMealState() {
         }
     }
 
+    // The windows are all editable, so nothing guarantees they sit in array
+    // order: take the earliest start still ahead, not the first one found.
     for (int i = 0; i < kMealCount; i++) {
         MealWindow window = GetMealWindow((Meal)i, weekendToday);
-        if (window.startSec > nowSec) {
+        if (window.startSec > nowSec &&
+            (state.nextMeal < 0 ||
+             window.startSec - nowSec < state.remainingSec)) {
             state.nextMeal = i;
             state.remainingSec = window.startSec - nowSec;
-            return state;
         }
     }
+    if (state.nextMeal >= 0) {
+        return state;
+    }
 
-    // Past the last meal of the day: count down to tomorrow's breakfast, using
-    // tomorrow's weekday to pick the right breakfast window.
+    // Past the last meal of the day: count down to tomorrow's first one, using
+    // tomorrow's weekday so the weekend breakfast window is honoured.
     const bool weekendTomorrow = IsWeekend(todayKey + 1);
-    MealWindow breakfast = GetMealWindow(Meal::Breakfast, weekendTomorrow);
-    state.nextMeal = (int)Meal::Breakfast;
+    for (int i = 0; i < kMealCount; i++) {
+        MealWindow window = GetMealWindow((Meal)i, weekendTomorrow);
+        const int untilStart = (24 * 3600 - nowSec) + window.startSec;
+        if (state.nextMeal < 0 || untilStart < state.remainingSec) {
+            state.nextMeal = i;
+            state.remainingSec = untilStart;
+        }
+    }
     state.nextIsTomorrow = true;
-    state.remainingSec = (24 * 3600 - nowSec) + breakfast.startSec;
     return state;
 }
 
@@ -1261,12 +1285,13 @@ static bool HttpGetJson(const std::wstring& path, std::string& out,
     } else {
         DWORD status = 0;
         DWORD statusSize = sizeof(status);
-        WinHttpQueryHeaders(request,
-                            WINHTTP_QUERY_STATUS_CODE |
-                                WINHTTP_QUERY_FLAG_NUMBER,
-                            WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize,
-                            WINHTTP_NO_HEADER_INDEX);
-        if (status != 200) {
+        if (!WinHttpQueryHeaders(request,
+                                 WINHTTP_QUERY_STATUS_CODE |
+                                     WINHTTP_QUERY_FLAG_NUMBER,
+                                 WINHTTP_HEADER_NAME_BY_INDEX, &status,
+                                 &statusSize, WINHTTP_NO_HEADER_INDEX)) {
+            error = L"The server's response could not be read";
+        } else if (status != 200) {
             error = L"The server returned HTTP " + std::to_wstring(status);
         } else {
             success = true;
@@ -1355,11 +1380,47 @@ static void PruneOldCacheFiles(int hostel, int mess, int keepFromMonthKey) {
     FindClose(find);
 }
 
+// Switching hostel or mess leaves the old source's files behind, since
+// PruneOldCacheFiles only ever looks at the current prefix. Windhawk would
+// delete them with the folder on removal, but there is no reason to keep them
+// until then. Only our own "h<n>m<n>-YYYY-MM.json" names are touched.
+static void PruneOtherSourceCacheFiles(int hostel, int mess) {
+    std::wstring directory = GetCacheDirectory();
+    if (directory.empty()) {
+        return;
+    }
+
+    const std::wstring keep = CacheFilePrefix(hostel, mess);
+    std::wstring pattern = directory + L"\\h*m*-*.json";
+    WIN32_FIND_DATAW findData{};
+    HANDLE find = FindFirstFileW(pattern.c_str(), &findData);
+    if (find == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    do {
+        std::wstring name = findData.cFileName;
+        // h1m2-2026-09.json is 17 characters; anything else is not ours.
+        if (name.size() != 17 || name[0] != L'h' || name[2] != L'm' ||
+            name[4] != L'-' || !iswdigit(name[1]) || !iswdigit(name[3])) {
+            continue;
+        }
+        if (name.compare(0, keep.size(), keep) == 0) {
+            continue;
+        }
+        std::wstring full = directory + L"\\" + name;
+        DeleteFileW(full.c_str());
+        Wh_Log(L"PruneOtherSourceCacheFiles: removed %s", name.c_str());
+    } while (FindNextFileW(find, &findData));
+
+    FindClose(find);
+}
+
 // Loads every cached month for the configured hostel/mess into one map.
 static void LoadCacheFromDisk() {
     MenuStore store;
-    store.hostel = g_settings.hostel;
-    store.mess = g_settings.mess;
+    CurrentSource(store.hostel, store.mess);
+    PruneOtherSourceCacheFiles(store.hostel, store.mess);
 
     std::wstring directory = GetCacheDirectory();
     if (!directory.empty()) {
@@ -1813,7 +1874,22 @@ static XamlRoot GetTaskbarXamlRoot(HWND hTaskbarWnd) {
 // Section 12: theme and brushes
 // ---------------------------------------------------------------------------
 
+// An element already in the taskbar's tree, for asking what theme is actually
+// in effect there. Defined with the UI state below.
+static FrameworkElement ThemeProbeElement();
+
 static bool IsLightTheme() {
+    // Ask the tree first: another mod can set an explicit RequestedTheme on
+    // the taskbar (Taskbar Styler themes do), which the registry knows nothing
+    // about. The button's ActualThemeChanged handler already works this way.
+    try {
+        if (auto element = ThemeProbeElement()) {
+            return element.ActualTheme() == ElementTheme::Light;
+        }
+    } catch (...) {
+    }
+
+    // Before the button exists, fall back to the OS setting.
     DWORD value = 0;
     DWORD size = sizeof(value);
     if (RegGetValueW(HKEY_CURRENT_USER,
@@ -2286,6 +2362,18 @@ struct TaskbarEntry {
 
 [[clang::no_destroy]] static std::optional<std::vector<TaskbarEntry>>
     g_taskbars{std::in_place};
+
+static FrameworkElement ThemeProbeElement() {
+    if (!g_taskbars) {
+        return nullptr;
+    }
+    for (auto& entry : *g_taskbars) {
+        if (entry.button) {
+            return entry.button;
+        }
+    }
+    return nullptr;
+}
 
 // The taskbar the open flyout belongs to, so its anchor maths use the right
 // monitor rather than always the primary one.
@@ -2920,7 +3008,20 @@ static bool InjectTaskbarButtonInto(HWND hWnd) {
 static std::vector<HWND> TargetTaskbarWnds() {
     std::vector<HWND> all = EnumerateTaskbarWnds();
     if (g_settings.taskbarScope == TaskbarScope::All) {
-        return all;
+        // Without the optional CSecondaryTaskBand symbols a secondary can
+        // never be injected into. Leave them out here rather than let the
+        // periodic reconcile below retry them -- and log the failure -- every
+        // twenty seconds for the life of the session.
+        if (CSecondaryTaskBand_GetTaskbarHost_Original &&
+            CSecondaryTaskBand_ITaskListWndSite_vftable) {
+            return all;
+        }
+        static bool warned = false;
+        if (!warned && all.size() > 1) {
+            warned = true;
+            Wh_Log(L"TargetTaskbarWnds: CSecondaryTaskBand symbols not "
+                   L"resolved, primary taskbar only");
+        }
     }
     std::vector<HWND> primaryOnly;
     if (!all.empty()) {
@@ -3984,6 +4085,73 @@ static void ApplyTimerInterval() {
     }
 }
 
+// Monitors come and go at runtime -- docking a laptop, switching a display
+// off -- and TrayUI::StartTaskbar does not re-fire for that. Without this, a
+// removed monitor's entry would sit in g_taskbars forever holding references
+// into a dead tree, and a newly attached one would never get a button.
+//
+// Runs from the UI timer, so a new taskbar is picked up within one idle tick.
+// InjectTaskbarButton already skips taskbars that have a button, so it is
+// only called when one is actually missing -- otherwise it would re-resolve
+// the XAML root every tick for nothing.
+static void ReconcileTaskbars() {
+    if (!g_taskbars || g_unloading) {
+        return;
+    }
+
+    // The timer ticks every second while the flyout is open; enumerating
+    // windows that often is pointless, so hold this to the idle cadence.
+    static ULONGLONG lastRunTick = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (lastRunTick != 0 && now - lastRunTick < (ULONGLONG)kIdleTickMs) {
+        return;
+    }
+    lastRunTick = now;
+
+    try {
+        // The flyout is anchored to a taskbar; if that one is gone, the
+        // flyout's tree went with it.
+        if (g_flyoutTaskbarWnd && !IsWindow(g_flyoutTaskbarWnd)) {
+            TearDownFlyout();
+        }
+
+        auto& entries = *g_taskbars;
+        bool removed = false;
+        for (auto& entry : entries) {
+            if (entry.taskbarWnd && !IsWindow(entry.taskbarWnd)) {
+                // Revokes the tokens; the element removals fail harmlessly
+                // against the dead tree, each inside its own try/catch.
+                RemoveTaskbarButtonFrom(entry);
+                removed = true;
+            }
+        }
+        if (removed) {
+            entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                         [](const TaskbarEntry& entry) {
+                                             return !entry.button;
+                                         }),
+                          entries.end());
+            InvalidateLabelCache();
+        }
+
+        for (HWND hWnd : TargetTaskbarWnds()) {
+            bool present = false;
+            for (auto& entry : entries) {
+                if (entry.taskbarWnd == hWnd && entry.button) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                InjectTaskbarButton();
+                break;
+            }
+        }
+    } catch (...) {
+        Wh_Log(L"ReconcileTaskbars: exception");
+    }
+}
+
 static void OnTimerTick() {
     if (g_unloading || !g_cardCountdowns) {
         return;
@@ -3991,6 +4159,7 @@ static void OnTimerTick() {
 
     try {
         ApplyTimerInterval();
+        ReconcileTaskbars();
         UpdateTaskbarLabel();
 
         const int todayKey = TodayKey();
@@ -4129,8 +4298,8 @@ static void NotifyUiDataChanged() {
 
 // Returns true when the merged cache now covers today.
 static bool PerformFetch() {
-    const int hostel = g_settings.hostel;
-    const int mess = g_settings.mess;
+    int hostel, mess;
+    CurrentSource(hostel, mess);
 
     g_fetching.store(true);
     NotifyUiDataChanged();
@@ -4230,12 +4399,14 @@ static DWORD WINAPI NetThreadProc(void*) {
 
         const int todayKey = TodayKey();
         const bool covered = StoreCoversDay(todayKey);
+        int hostel, mess;
+        CurrentSource(hostel, mess);
         const bool refreshDue =
             covered && g_settings.autoUpdate &&
             (lastSuccessTick == 0 ||
              GetTickCount64() - lastSuccessTick > kRefreshAgeMs) &&
-            CachedMonthOlderThan(g_settings.hostel, g_settings.mess,
-                                 MonthKeyFromDayKey(todayKey), kRefreshAgeMs);
+            CachedMonthOlderThan(hostel, mess, MonthKeyFromDayKey(todayKey),
+                                 kRefreshAgeMs);
         DWORD waitMs = kIdleIntervalMs;
 
         if (forced || refreshDue || (!covered && g_settings.autoUpdate)) {
@@ -4280,7 +4451,7 @@ static DWORD WINAPI NetThreadProc(void*) {
             break;
         }
         if (result == WAIT_OBJECT_0 + 1) {
-            ResetEvent(kickEvent);
+            // Auto-reset event: the wait already cleared it.
             forced = true;          // a manual reload ignores the backoff
             backoffMs = kFirstBackoffMs;
         }
@@ -4541,8 +4712,11 @@ void Wh_ModAfterInit() {
             [](void*) {
                 try {
                     RemoveTaskbarButton();
-                    InjectTaskbarButton();
-                    StartUiTimer();
+                    // Same retry chain as the taskbar-creation hook, so a
+                    // transient failure when the mod is enabled mid-session
+                    // does not leave it buttonless until a setting is touched.
+                    // InjectWithRetry starts the UI timer once it is done.
+                    InjectWithRetry(++g_injectGeneration);
                 } catch (...) {
                     Wh_Log(L"Wh_ModAfterInit: exception during injection");
                 }
@@ -4576,11 +4750,10 @@ void Wh_ModSettingsChanged() {
 
                 try {
                     RemoveTaskbarButton();
-                    InjectTaskbarButton();
-                    // Idempotent, and needed in case the first injection failed
-                    // and the timer was never created -- otherwise the label
-                    // would sit frozen even once the button is back.
-                    StartUiTimer();
+                    // InjectWithRetry starts the UI timer when it is done --
+                    // idempotently, so this also covers the case where the
+                    // first injection failed and the timer was never created.
+                    InjectWithRetry(++g_injectGeneration);
                 } catch (...) {
                     Wh_Log(L"Wh_ModSettingsChanged: exception during re-inject");
                 }

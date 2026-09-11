@@ -420,6 +420,17 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 - *Drinks* renamed to **Beverages**. Plain `Milk` now sits under Dairy.
   Whole-item matching ignores spaces, so `Water Melon` and `Watermelon` are
   treated alike.
+- **Monitors plugged in or removed at runtime are handled.** With *Show on:
+  Every taskbar*, a newly attached display gets its button within about 20 s,
+  and a removed one's button is cleaned up rather than left dangling.
+- Meal windows no longer have to be configured in chronological order.
+- Theme detection asks the taskbar's own XAML tree first, so a Taskbar Styler
+  theme that forces light or dark is respected.
+- Enabling the mod mid-session now retries injection the same way a taskbar
+  restart does.
+- Fixed a race where changing hostel and mess together could cache the
+  response under the wrong file name; stale cache files from a previous
+  hostel/mess are now removed.
 
 ### 1.0.0
 
