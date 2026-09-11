@@ -106,90 +106,104 @@ backdrop blur is derived from GPL-3.0 code.
 
 // ==WindhawkModSettings==
 /*
-- hostel: mens
-  $name: Hostel
-  $options:
-  - mens: Men's Hostel (Hostel 1)
-  - womens: Women's Hostel (Hostel 2)
-- mess: veg
-  $name: Mess
-  $options:
-  - special: Special (Mess 1)
-  - veg: Veg (Mess 2)
-  - nonveg: Non-Veg (Mess 3)
-- menuUrl: ""
-  $name: Custom menu URL
-  $description: "Leave empty to use messit.vinnovateit.com. Otherwise the full URL of a JSON file in the same format. {hostel} and {mess} in the URL are replaced with the numbers chosen above, e.g. https://example.com/menu/hostel-{hostel}-mess-{mess}.json. Changing this clears the cached menus."
-- buttonMode: expanded
+- source:
+  - hostel: mens
+    $name: Hostel
+    $options:
+    - mens: Men's Hostel (Hostel 1)
+    - womens: Women's Hostel (Hostel 2)
+  - mess: veg
+    $name: Mess
+    $options:
+    - special: Special (Mess 1)
+    - veg: Veg (Mess 2)
+    - nonveg: Non-Veg (Mess 3)
+  - url: ""
+    $name: Custom menu URL
+    $description: "Leave empty to use messit.vinnovateit.com. Otherwise the full URL of a JSON file in the same format. {hostel} and {mess} in the URL are replaced with the numbers chosen above, e.g. https://example.com/menu/hostel-{hostel}-mess-{mess}.json. Changing this clears the cached menus."
+  $name: Menu source
+  $description: Which mess's menu to show. This is the only thing that needs setting up.
+- button:
+  - mode: expanded
+    $name: Content
+    $description: Expanded shows the current meal or the next-meal countdown next to the icon. Compact shows only the icon, with the same text in the tooltip.
+    $options:
+    - expanded: Expanded
+    - compact: Compact
+  - position: tray_left
+    $name: Position
+    $description: The first sits in the taskbar's own area; the rest sit inside the system tray, next to the other tray icons.
+    $options:
+    - taskbar_left: Left edge of the taskbar
+    - tray_left: Left of the system tray
+    - clock_left: Left of the clock
+    - clock_right: Right of the clock
+  - scope: primary
+    $name: Show on
+    $description: Which taskbars get the button on a multi-monitor setup.
+    $options:
+    - primary: The primary taskbar only
+    - all: Every taskbar
+  - maxLabelWidth: 180
+    $name: Maximum label width
+    $description: Longer text is truncated with an ellipsis. Pixels.
+  - paddingLeft: 4
+    $name: Spacing (left)
+    $description: Gap in pixels to the left of the button, which also shifts the button to the right. Increase this to move clear of another mod occupying the same spot.
+  - paddingRight: 4
+    $name: Spacing (right)
+    $description: Gap in pixels to the right of the button.
+  - reserveSpace: true
+    $name: 'Push the taskbar icons aside (only with "Left edge of the taskbar")'
+    $description: Reserves the button's width plus its spacing before the taskbar icons, so they move out of the way instead of sitting underneath. Has no effect in the system-tray positions, where the tray lays the button out for us. Turn this off if another mod already manages that space.
   $name: Taskbar button
-  $description: Expanded shows the current meal or the next-meal countdown. Compact shows only the icon.
-  $options:
-  - expanded: Expanded
-  - compact: Compact
-- position: tray_left
-  $name: Button position
-  $description: The first sits in the taskbar's own area; the rest sit inside the system tray, next to the other tray icons.
-  $options:
-  - taskbar_left: Left edge of the taskbar
-  - tray_left: Left of the system tray
-  - clock_left: Left of the clock
-  - clock_right: Right of the clock
-- buttonPaddingLeft: 4
-  $name: Button spacing (left)
-  $description: Gap in pixels to the left of the button, which also shifts the button to the right. Increase this to move clear of another mod occupying the same spot.
-- buttonPaddingRight: 4
-  $name: Button spacing (right)
-  $description: Gap in pixels to the right of the button.
-- reserveTaskbarSpace: true
-  $name: 'Push the taskbar icons aside (only with "Left edge of the taskbar")'
-  $description: Reserves the button's width plus its spacing before the taskbar icons, so they move out of the way instead of sitting underneath. Has no effect in the system-tray positions, where the tray lays the button out for us. Turn this off if another mod already manages that space.
-- taskbarScope: primary
-  $name: Show on
-  $description: Which taskbars get the button on a multi-monitor setup.
-  $options:
-  - primary: The primary taskbar only
-  - all: Every taskbar
-- maxLabelWidth: 180
-  $name: Maximum label width
-  $description: Longer text is truncated with an ellipsis. Pixels.
-- popupWidth: 380
-  $name: Flyout width
-  $description: Pixels.
-- popupCornerRadius: 8
-  $name: Flyout corner radius
-  $description: Pixels. The meal cards follow automatically, staying concentric with the flyout's own corners.
-- showSnacks: true
-  $name: Show the Snacks card
-- extraDessertItems: ""
-  $name: Extra dessert items
-  $description: "Comma-separated. The site sometimes lists desserts without a \"Sweet:\" or \"Fruits:\" label; the common ones are recognised already, and anything it starts listing that is not can be added here, e.g. Rasgulla, Mango. An entry matches a whole item or its last word, ignoring case."
-- backgroundMode: auto
-  $name: Flyout background
-  $description: Match Windows follows the built-in Windows 11 flyout styling and ignores the two settings below. Use Custom to match a Taskbar Styler theme instead.
-  $options:
-  - auto: Match Windows 11
-  - custom: Custom colour and blur
-- backgroundColor: "#80000000"
-  $name: Custom background colour
-  $description: "Only used when the background is set to Custom. Hex with the alpha first: #AARRGGBB, or #RRGGBB for fully opaque. The default #80000000 is the Tinted Glass taskbar theme's colour."
-- blurAmount: 18
-  $name: Custom blur amount
-  $description: Only used when the background is set to Custom. Blur radius in pixels, on the same scale Taskbar Styler themes use. The default 18 is the Tinted Glass taskbar theme's value. Set to 0 for a flat surface with no blur.
-- autoUpdate: true
-  $name: Check for new menus automatically
-  $description: Re-downloads the current month about once a day, since the site sometimes revises a menu after publishing it, and keeps checking for a missing month every few hours. When off, the menu is only downloaded when you press the reload button in the flyout.
-- timeBreakfast: "07:00-09:00"
-  $name: Breakfast (Mon-Fri)
-  $description: "Serving window as HH:MM-HH:MM, on a 24-hour clock. This drives the countdown and which card is highlighted, so correct it here if your mess changes a slot. The defaults are the VIT Vellore timings."
-- timeBreakfastWeekend: "07:30-09:30"
-  $name: Breakfast (Sat & Sun)
-- timeLunch: "12:30-14:30"
-  $name: Lunch
-- timeSnacks: "16:30-18:00"
-  $name: Snacks
-- timeDinner: "19:00-21:00"
-  $name: Dinner
-
+- flyout:
+  - width: 380
+    $name: Width
+    $description: Pixels.
+  - cornerRadius: 8
+    $name: Corner radius
+    $description: Pixels. The meal cards follow automatically, staying concentric with the flyout's own corners.
+  - showSnacks: true
+    $name: Show the Snacks card
+    $description: Hides only the card. The countdown still knows when snacks are served.
+  - backgroundMode: auto
+    $name: Background
+    $description: Match Windows follows the built-in Windows 11 flyout styling and ignores the two settings below. Use Custom to match a Taskbar Styler theme instead.
+    $options:
+    - auto: Match Windows 11
+    - custom: Custom colour and blur
+  - backgroundColor: "#80000000"
+    $name: Custom background colour
+    $description: "Only used when the background is set to Custom. Hex with the alpha first: #AARRGGBB, or #RRGGBB for fully opaque. The default #80000000 is the Tinted Glass taskbar theme's colour."
+  - blurAmount: 18
+    $name: Custom blur amount
+    $description: Only used when the background is set to Custom. Blur radius in pixels, on the same scale Taskbar Styler themes use. The default 18 is the Tinted Glass taskbar theme's value. Set to 0 for a flat surface with no blur.
+  $name: Flyout
+- timings:
+  - breakfast: "07:00-09:00"
+    $name: Breakfast (Mon-Fri)
+  - breakfastWeekend: "07:30-09:30"
+    $name: Breakfast (Sat & Sun)
+  - lunch: "12:30-14:30"
+    $name: Lunch
+  - snacks: "16:30-18:00"
+    $name: Snacks
+  - dinner: "19:00-21:00"
+    $name: Dinner
+  $name: Meal timings
+  $description: "Serving windows as HH:MM-HH:MM, on a 24-hour clock. These drive the countdown and which card is highlighted, so correct them here if your mess changes a slot. The defaults are the VIT Vellore timings."
+- grouping:
+  - extraDessertItems: ""
+    $name: Extra dessert items
+    $description: "Comma-separated. The site sometimes lists desserts without a \"Sweet:\" or \"Fruits:\" label; the common ones are recognised already, and anything it starts listing that is not can be added here, e.g. Rasgulla, Mango. An entry matches a whole item or its last word, ignoring case."
+  $name: Menu grouping
+  $description: How items are sorted into Main Items, Bread & Sides, Dairy, Beverages and Dessert in the flyout.
+- updates:
+  - automatic: true
+    $name: Check for new menus automatically
+    $description: Re-downloads the current month about once a day, since the site sometimes revises a menu after publishing it, and keeps checking for a missing month every few hours. When off, the menu is only downloaded when you press the reload button in the flyout.
+  $name: Updates
 */
 // ==/WindhawkModSettings==
 
@@ -467,7 +481,7 @@ static bool ParseTimeRange(const std::wstring& text, MealWindow& out) {
 // "Rasgulla, Mango, " -> {"rasgulla", "mango"}. Empty entries are dropped so a
 // trailing comma cannot turn every item into a dessert.
 static void LoadUserDessertKeywords() {
-    std::wstring text = GetStringSetting(L"extraDessertItems", L"");
+    std::wstring text = GetStringSetting(L"grouping.extraDessertItems", L"");
     auto keywords = std::make_shared<std::vector<std::wstring>>();
 
     size_t start = 0;
@@ -499,16 +513,19 @@ static void LoadMealWindow(PCWSTR key, PCWSTR fallback, MealWindow& target) {
     ParseTimeRange(fallback, target);
 }
 
+// Settings are grouped into sections in the settings block above, and Windhawk
+// addresses a grouped key as "section.key".
 static void LoadSettings() {
-    g_settings.hostel = (GetStringSetting(L"hostel", L"mens") == L"womens") ? 2 : 1;
+    g_settings.hostel =
+        (GetStringSetting(L"source.hostel", L"mens") == L"womens") ? 2 : 1;
 
-    std::wstring mess = GetStringSetting(L"mess", L"veg");
+    std::wstring mess = GetStringSetting(L"source.mess", L"veg");
     g_settings.mess = (mess == L"special") ? 1 : (mess == L"nonveg") ? 3 : 2;
     g_sourceKey.store(g_settings.hostel * 10 + g_settings.mess);
 
     {
         // Trimmed, so a stray space cannot turn a valid URL into a bad one.
-        std::wstring url = GetStringSetting(L"menuUrl", L"");
+        std::wstring url = GetStringSetting(L"source.url", L"");
         size_t first = url.find_first_not_of(L" \t\r\n");
         size_t last = url.find_last_not_of(L" \t\r\n");
         url = (first == std::wstring::npos)
@@ -519,32 +536,38 @@ static void LoadSettings() {
         g_menuUrlTemplate = std::move(shared);
     }
 
-    g_settings.compact = (GetStringSetting(L"buttonMode", L"expanded") == L"compact");
-    std::wstring position = GetStringSetting(L"position", L"tray_left");
+    g_settings.compact =
+        (GetStringSetting(L"button.mode", L"expanded") == L"compact");
+    std::wstring position = GetStringSetting(L"button.position", L"tray_left");
     g_settings.position =
         (position == L"taskbar_left")  ? ButtonPosition::TaskbarLeft
         : (position == L"clock_left")  ? ButtonPosition::ClockLeft
         : (position == L"clock_right") ? ButtonPosition::ClockRight
                                        : ButtonPosition::TrayLeft;
+    g_settings.taskbarScope =
+        (GetStringSetting(L"button.scope", L"primary") == L"all")
+            ? TaskbarScope::All
+            : TaskbarScope::Primary;
+    g_settings.maxLabelWidth =
+        std::clamp(Wh_GetIntSetting(L"button.maxLabelWidth"), 40, 600);
     // Wide enough to slide the button across any monitor; the bound is only
     // here to stop a typo pushing it off-screen with no way back.
     g_settings.buttonPaddingLeft =
-        std::clamp(Wh_GetIntSetting(L"buttonPaddingLeft"), 0, 4000);
+        std::clamp(Wh_GetIntSetting(L"button.paddingLeft"), 0, 4000);
     g_settings.buttonPaddingRight =
-        std::clamp(Wh_GetIntSetting(L"buttonPaddingRight"), 0, 4000);
+        std::clamp(Wh_GetIntSetting(L"button.paddingRight"), 0, 4000);
     g_settings.reserveTaskbarSpace =
-        Wh_GetIntSetting(L"reserveTaskbarSpace") != 0;
+        Wh_GetIntSetting(L"button.reserveSpace") != 0;
 
-    g_settings.maxLabelWidth = std::clamp(Wh_GetIntSetting(L"maxLabelWidth"), 40, 600);
-    g_settings.popupWidth = std::clamp(Wh_GetIntSetting(L"popupWidth"), 260, 900);
+    g_settings.popupWidth =
+        std::clamp(Wh_GetIntSetting(L"flyout.width"), 260, 900);
     g_settings.popupCornerRadius =
-        std::clamp(Wh_GetIntSetting(L"popupCornerRadius"), 0, 32);
-    g_settings.showSnacks = Wh_GetIntSetting(L"showSnacks") != 0;
-    LoadUserDessertKeywords();
-
+        std::clamp(Wh_GetIntSetting(L"flyout.cornerRadius"), 0, 32);
+    g_settings.showSnacks = Wh_GetIntSetting(L"flyout.showSnacks") != 0;
     g_settings.customBackground =
-        (GetStringSetting(L"backgroundMode", L"auto") == L"custom");
-    std::wstring hexColor = GetStringSetting(L"backgroundColor", L"#80000000");
+        (GetStringSetting(L"flyout.backgroundMode", L"auto") == L"custom");
+    std::wstring hexColor =
+        GetStringSetting(L"flyout.backgroundColor", L"#80000000");
     if (!ParseHexColor(hexColor, g_settings.bgA, g_settings.bgR, g_settings.bgG,
                        g_settings.bgB)) {
         Wh_Log(L"LoadSettings: could not parse backgroundColor \"%s\", "
@@ -555,21 +578,22 @@ static void LoadSettings() {
         g_settings.bgG = 0;
         g_settings.bgB = 0;
     }
+    g_settings.blurAmount =
+        std::clamp(Wh_GetIntSetting(L"flyout.blurAmount"), 0, 100);
 
-    g_settings.blurAmount = std::clamp(Wh_GetIntSetting(L"blurAmount"), 0, 100);
-    g_settings.autoUpdate = Wh_GetIntSetting(L"autoUpdate") != 0;
-
-    g_settings.taskbarScope =
-        (GetStringSetting(L"taskbarScope", L"primary") == L"all")
-            ? TaskbarScope::All
-            : TaskbarScope::Primary;
-
-    LoadMealWindow(L"timeBreakfast", L"07:00-09:00", g_settings.mealWeekday[0]);
-    LoadMealWindow(L"timeBreakfastWeekend", L"07:30-09:30",
+    LoadMealWindow(L"timings.breakfast", L"07:00-09:00",
+                   g_settings.mealWeekday[0]);
+    LoadMealWindow(L"timings.breakfastWeekend", L"07:30-09:30",
                    g_settings.breakfastWeekend);
-    LoadMealWindow(L"timeLunch", L"12:30-14:30", g_settings.mealWeekday[1]);
-    LoadMealWindow(L"timeSnacks", L"16:30-18:00", g_settings.mealWeekday[2]);
-    LoadMealWindow(L"timeDinner", L"19:00-21:00", g_settings.mealWeekday[3]);
+    LoadMealWindow(L"timings.lunch", L"12:30-14:30", g_settings.mealWeekday[1]);
+    LoadMealWindow(L"timings.snacks", L"16:30-18:00",
+                   g_settings.mealWeekday[2]);
+    LoadMealWindow(L"timings.dinner", L"19:00-21:00",
+                   g_settings.mealWeekday[3]);
+
+    LoadUserDessertKeywords();
+
+    g_settings.autoUpdate = Wh_GetIntSetting(L"updates.automatic") != 0;
 }
 
 // ---------------------------------------------------------------------------
