@@ -13,7 +13,9 @@ the chevrons. It caches everything locally, so it opens instantly and works
 offline.
 
 Built for **VIT Vellore**, using the menu data from
-[messit.vinnovateit.com](https://messit.vinnovateit.com).
+[messit.vinnovateit.com](https://messit.vinnovateit.com). If the site ever moves,
+or another mess publishes its menu in the same JSON shape, the
+[Custom menu URL](#menu-source) setting points the mod there instead.
 
 ![The flyout open above the taskbar](docs/screenshots/hero.png)
 
@@ -46,9 +48,14 @@ The taskbar button changes with the time of day:
 
 | When | The button shows |
 | --- | --- |
-| During a meal | The dishes being served — `🍽 Poori • Aloo Masala • Semiya…` |
-| Between meals | A live countdown — `🍽 Lunch starts in 1 hr 20 min` |
-| After dinner | Tomorrow's first meal — `🍽 Breakfast starts in 10 hr` |
+| During a meal | The dishes being served — `Poori • Aloo Masala • Semiya…` |
+| Between meals | A live countdown — `Lunch starts in 1 hr 20 min` |
+| After dinner | Tomorrow's first meal — `Breakfast starts in 10 hr` |
+
+The icon is the Fluent "Food" glyph, drawn in the same monochrome style as
+the taskbar's own tray icons and following the light/dark theme. It is an
+outline between meals and **fills in while a meal is being served**, so even
+in Compact mode you can tell at a glance whether the mess is open.
 
 Prefer it out of the way? **Compact mode** shows just the icon, with the full
 text in the tooltip.
@@ -87,7 +94,7 @@ being served.
 
 - Browse any day with the ◀ ▶ chevrons; arrows disable at the edges of what's
   cached.
-- Four button positions, plus spacing controls to sit alongside other mods.
+- Six button positions, plus spacing controls to sit alongside other mods.
 - Optionally pushes the taskbar icons aside so nothing overlaps.
 - **Multi-monitor** — put the button on the primary taskbar only, or on every
   one. The flyout opens on whichever monitor you clicked.
@@ -191,48 +198,54 @@ background.
 
 ## Settings
 
+The settings page is split into six sections, in roughly the order you're
+likely to need them.
+
 ### Menu source
+
+The only section that needs setting up.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Hostel** | Men's Hostel | Men's (Hostel 1) or Women's (Hostel 2) |
 | **Mess** | Veg | Special (1), Veg (2) or Non-Veg (3) |
+| **Custom menu URL** | *(empty)* | Leave empty for `messit.vinnovateit.com`. Otherwise the full URL of a JSON file in the same format; `{hostel}` and `{mess}` are replaced with the numbers above, e.g. `https://example.com/menu/hostel-{hostel}-mess-{mess}.json`. `http://` works too, for a local server. Changing this clears the cached menus |
 
 ### Taskbar button
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Taskbar button** | Expanded | `Expanded` shows the meal or countdown; `Compact` shows only the icon |
-| **Button position** | Left of the system tray | Left edge of the taskbar, left of the tray, or either side of the clock |
-| **Button spacing (left)** | `4` | Gap to the left, in pixels. Also shifts the button right — raise it to clear another mod |
-| **Button spacing (right)** | `4` | Gap to the right, in pixels |
-| **Push the taskbar icons aside** | On | **Only does anything with "Left edge of the taskbar".** Reserves room so Windows' icons move over instead of sitting underneath. In the tray positions the tray lays the button out itself, so this has no effect |
-| **Maximum label width** | `180` | Longer text is truncated with an ellipsis |
+| **Content** | Expanded | `Expanded` shows the meal or countdown next to the icon; `Compact` shows only the icon, with the text in the tooltip |
+| **Filled icon while a meal is being served** | On | The outline glyph switches to its filled variant for each serving window, so the state is readable from the icon alone — handy in Compact mode |
+| **Position** | Left of the system tray | Left edge of the taskbar, left of the tray, left of the input indicator (language switcher), left of the network/volume/battery icons, or either side of the clock |
 | **Show on** | The primary taskbar only | Or every taskbar, on a multi-monitor setup |
+| **Maximum label width** | `180` | Longer text is truncated with an ellipsis |
+| **Spacing (left)** | `4` | Gap to the left, in pixels. Also shifts the button right — raise it to clear another mod |
+| **Spacing (right)** | `4` | Gap to the right, in pixels |
+| **Push the taskbar icons aside** | On | **Only does anything with "Left edge of the taskbar".** Reserves room so Windows' icons move over instead of sitting underneath. In the tray positions the tray lays the button out itself, so this has no effect |
 
-### Flyout appearance
+### Flyout
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| **Flyout width** | `380` | In pixels |
-| **Flyout corner radius** | `8` | In pixels. Meal cards follow automatically, staying concentric |
-| **Show the Snacks card** | On | Hide the 16:30 snack if you don't use it |
-| **Extra dessert items** | *(empty)* | Comma-separated. If the site starts listing a dessert the mod doesn't recognise, add it here (e.g. `Rasgulla, Mango`) and it moves to the Dessert group. Matches a whole item or its last word, ignoring case — so `Cake` also catches `Brownie Cake` |
-| **Flyout background** | Match Windows 11 | `Match Windows 11` follows the OS and **ignores the two settings below**. `Custom` uses them |
+| **Width** | `380` | In pixels |
+| **Corner radius** | `8` | In pixels. Meal cards follow automatically, staying concentric |
+| **Show the Snacks card** | On | Hide the 16:30 snack if you don't use it. The countdown still knows when snacks are served |
+| **Background** | Match Windows 11 | `Match Windows 11` follows the OS and **ignores the two settings below**. `Custom` uses them |
 | **Custom background colour** | `#80000000` | `#AARRGGBB` (alpha first) or `#RRGGBB` for opaque |
 | **Custom blur amount** | `18` | Blur radius in pixels; `0` gives a flat surface |
 
-### Updates
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| **Check for new menus automatically** | On | Re-downloads the current month about once a day and keeps checking for a missing month. When off, the menu is only fetched via the flyout's reload button |
+> **Matching a Taskbar Styler theme:** set **Background** to `Custom`, then
+> copy your theme's values across. For the *Tinted Glass* theme
+> (`WindhawkBlur BlurAmount="18" TintColor="#80000000"`) the defaults already
+> match — just switch the mode to `Custom`.
 
 ### Meal timings
 
 All five serving windows are editable as `HH:MM-HH:MM`, so a mess that changes
-a slot does not need a new version of the mod. The defaults are the VIT Vellore
-timings listed under [How it works](#-how-it-works).
+a slot does not need a new version of the mod. They don't have to be in
+chronological order. The defaults are the VIT Vellore timings listed under
+[How it works](#-how-it-works).
 
 | Setting | Default |
 | --- | --- |
@@ -242,10 +255,17 @@ timings listed under [How it works](#-how-it-works).
 | **Snacks** | `16:30-18:00` |
 | **Dinner** | `19:00-21:00` |
 
-> **Matching a Taskbar Styler theme:** set **Flyout background** to `Custom`,
-> then copy your theme's values across. For the *Tinted Glass* theme
-> (`WindhawkBlur BlurAmount="18" TintColor="#80000000"`) the defaults already
-> match — just switch the mode to `Custom`.
+### Menu grouping
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Extra dessert items** | *(empty)* | Comma-separated. If the site starts listing a dessert the mod doesn't recognise, add it here (e.g. `Rasgulla, Mango`) and it moves to the Dessert group. Matches a whole item or its last word, ignoring case — so `Cake` also catches `Brownie Cake` |
+
+### Updates
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Check for new menus automatically** | On | Re-downloads the current month about once a day and keeps checking for a missing month. When off, the menu is only fetched via the flyout's reload button |
 
 ---
 
@@ -258,10 +278,10 @@ settings:
 
 | Meal | Mon–Fri | Sat & Sun |
 | --- | --- | --- |
-| 🍳 Breakfast | 07:00 – 09:00 | 07:30 – 09:30 |
-| 🍛 Lunch | 12:30 – 14:30 | 12:30 – 14:30 |
-| ☕ Snacks | 16:30 – 18:00 | 16:30 – 18:00 |
-| 🌙 Dinner | 19:00 – 21:00 | 19:00 – 21:00 |
+| Breakfast | 07:00 – 09:00 | 07:30 – 09:30 |
+| Lunch | 12:30 – 14:30 | 12:30 – 14:30 |
+| Snacks | 16:30 – 18:00 | 16:30 – 18:00 |
+| Dinner | 19:00 – 21:00 | 19:00 – 21:00 |
 
 ### Item grouping
 
@@ -288,16 +308,27 @@ Menus come from:
 https://messit.vinnovateit.com/menu-data/hostel-{hostel}-mess-{mess}.json
 ```
 
+— or from wherever **Custom menu URL** points, if you host a file of the same
+shape yourself (a `menu` array of `{ "date": "YYYY-MM-DD", "menu": [ { "type":
+1-4, "menu": "comma, separated, items" } ] }` objects).
+
 Each file covers one month. Cached copies live in Windhawk's own storage folder
 for this mod, which **Windhawk deletes when the mod is removed** — so the mod
 leaves nothing behind on your disk.
 
 - The current month is **re-downloaded about once a day** — the site sometimes
   revises a file after publishing it (in September 2026 the breakfast sides
-  and drinks were missing for the first week).
+  and drinks were missing for the first week). The worker wakes every 6 hours,
+  so a revision can take up to that long to show; the reload button is
+  immediate.
 - If the month is missing altogether, the mod retries every 6 hours, backing
   off from 15 minutes on network errors.
-- Up to three months are kept, so day-navigation crosses month boundaries.
+- Up to three months are kept per hostel and mess, so day-navigation crosses
+  month boundaries.
+- **Every mess you have looked at stays cached.** Switching hostel or mess
+  shows that mess's cached menu at once and works offline; only the menu URL
+  changing clears the cache, since the files are named by hostel and mess
+  alone.
 - The reload button at the bottom of the flyout forces a check immediately.
 
 ---
@@ -431,6 +462,42 @@ To check it compiles outside Windhawk, using Windhawk's own bundled toolchain:
 - Fixed a race where changing hostel and mess together could cache the
   response under the wrong file name; stale cache files from a previous
   hostel/mess are now removed.
+- New **Custom menu URL** setting, so the mod survives the site moving and
+  works for any campus that publishes the same JSON shape. The VIT URL stays
+  the default.
+- The taskbar icon is now the Fluent "Food" glyph, monochrome and
+  theme-aware like the tray's own icons, instead of a colour emoji. The meal
+  cards no longer carry emoji either.
+- The settings page is organised into sections (Menu source, Taskbar button,
+  Flyout, Meal timings, Menu grouping, Updates). **Upgrading from 1.0.0 resets
+  settings to their defaults** — re-pick your hostel and mess.
+- Fixed: removing the button (unload, settings change, taskbar restart) could
+  delete the wrong system-tray column if the tray's columns had shifted since
+  injection — leaving a scrambled tray until Explorer restarted. The column is
+  now tracked by identity, and column spans are kept intact on insert/remove.
+- Fixed: a settings change that couldn't reach a busy taskbar thread is now
+  retried by the UI timer instead of being dropped.
+- New button positions: **Left of the input indicator** (the language switcher) and **Left of the network, volume and battery icons**.
+- The taskbar button has an accessibility name for screen readers.
+- The "no menu" message says so when automatic checks are turned off, rather
+  than claiming to be checking.
+- Turning **Check for new menus automatically** on now wakes the download
+  worker at once instead of waiting for its next scheduled check (up to six
+  hours). While it is off, the worker sleeps until the reload button or the
+  setting wakes it, and a failed manual reload no longer schedules automatic
+  retries.
+- Fixed: unloading the mod during the flyout's 250 ms slide-in animation could
+  leave the animation holding the flyout tree past the unload.
+- A menu entry with an impossible date (e.g. "2026-02-31") is skipped rather
+  than being filed under the day it would roll over to.
+- The log now says when a tray landmark for the chosen position could not be
+  found and the button was appended at the end of the tray instead.
+- **The taskbar icon fills in while a meal is being served** and returns to
+  the outline in between (new **Filled icon while a meal is being served**
+  setting, on by default). Both are Fluent's `Food` glyph.
+- **Switching hostel or mess no longer throws away the other one's cache.**
+  Every source you have viewed stays on disk (old months still age out), so
+  flipping between messes is instant and works offline.
 
 ### 1.0.0
 
@@ -464,6 +531,8 @@ First release.
   `CTaskBand::GetTaskbarHost` and the `TaskbarHost::FrameHeight` prologue, the
   system-tray column insert/remove, and the `RunFromWindowThread` helper.
   Both are MIT licensed.
+- **[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons)**
+  by Microsoft — the "Food" glyph used for the taskbar button. MIT licensed.
 - **[Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler)**
   — the Composition backdrop-blur brush. **GPL-3.0**, and its `XamlBlurBrush` is
   itself derived from [TranslucentTB](https://github.com/TranslucentTB/TranslucentTB),
