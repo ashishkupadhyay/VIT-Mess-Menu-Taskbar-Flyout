@@ -2955,8 +2955,8 @@ static FrameworkElement MakeTaskbarIcon(bool light, PathIcon& icon,
     }
 
     Viewbox viewbox;
-    viewbox.Width(16);
-    viewbox.Height(16);
+    viewbox.Width(18);
+    viewbox.Height(18);
     viewbox.Stretch(Stretch::Uniform);
     viewbox.VerticalAlignment(VerticalAlignment::Center);
     viewbox.Child(canvas);
