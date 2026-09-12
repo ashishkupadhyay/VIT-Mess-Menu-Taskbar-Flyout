@@ -354,13 +354,18 @@ static void CurrentSource(int& hostel, int& mess) {
     mess = key % 10;
 }
 
-// The user's extra dessert keywords, already normalised (see NormalizeKey).
-// Kept out of ModSettings for the reason given above: this is a list of
-// strings, rewritten by LoadSettings while the taskbar thread may be in the
-// middle of classifying a menu. Readers take a snapshot of the shared_ptr
-// under the lock and never touch the vector itself while unlocked.
+// The user's extra dessert keywords, already normalised (see NormalizeKey),
+// each with its spaceless form precomputed so ClassifyItem does not redo it
+// per item. Kept out of ModSettings for the reason given above: this is a
+// list of strings, rewritten by LoadSettings while the taskbar thread may be
+// in the middle of classifying a menu. Readers take a snapshot of the
+// shared_ptr under the lock and never touch the vector itself while unlocked.
+struct DessertKeyword {
+    std::wstring normalized;  // "water melon"
+    std::wstring compact;     // "watermelon"
+};
 static std::mutex g_userDessertKeywordsMutex;
-static std::shared_ptr<const std::vector<std::wstring>> g_userDessertKeywords;
+static std::shared_ptr<const std::vector<DessertKeyword>> g_userDessertKeywords;
 
 // The custom menu URL template, or empty for the built-in host. Same
 // arrangement: written by LoadSettings, snapshotted by the network worker.
@@ -373,6 +378,7 @@ static std::wstring GetMenuUrlTemplate() {
 }
 
 static std::wstring NormalizeKey(const std::wstring& text);
+static std::wstring WithoutSpaces(const std::wstring& text);
 
 // Wh_GetStringSetting never returns null -- it yields L"" when unset or on
 // error -- so an empty test is all that is needed. StringSetting is RAII, so
@@ -497,7 +503,7 @@ static bool ParseTimeRange(const std::wstring& text, MealWindow& out) {
 // trailing comma cannot turn every item into a dessert.
 static void LoadUserDessertKeywords() {
     std::wstring text = GetStringSetting(L"grouping.extraDessertItems", L"");
-    auto keywords = std::make_shared<std::vector<std::wstring>>();
+    auto keywords = std::make_shared<std::vector<DessertKeyword>>();
 
     size_t start = 0;
     while (start <= text.size()) {
@@ -506,7 +512,8 @@ static void LoadUserDessertKeywords() {
             start, comma == std::wstring::npos ? std::wstring::npos
                                                : comma - start));
         if (!piece.empty()) {
-            keywords->push_back(std::move(piece));
+            std::wstring compact = WithoutSpaces(piece);
+            keywords->push_back({std::move(piece), std::move(compact)});
         }
         if (comma == std::wstring::npos) {
             break;
@@ -809,7 +816,8 @@ static std::wstring FormatLongDate(int dayKey) {
 // ---------------------------------------------------------------------------
 // Section 4: meal windows and the "what is happening now" state machine
 //
-// VIT Vellore timings, deliberately hard-coded: this mod targets one campus.
+// The windows come from settings (VIT Vellore's by default), so nothing here
+// may assume a fixed order or fixed times.
 // ---------------------------------------------------------------------------
 
 static_assert(kMealCount == 4,
@@ -1046,15 +1054,15 @@ static Group ClassifyItem(const std::wstring& item) {
     // its mind. Snapshot the list under the lock; LoadSettings may be swapping
     // it on another thread.
     {
-        std::shared_ptr<const std::vector<std::wstring>> userKeywords;
+        std::shared_ptr<const std::vector<DessertKeyword>> userKeywords;
         {
             std::lock_guard<std::mutex> lock(g_userDessertKeywordsMutex);
             userKeywords = g_userDessertKeywords;
         }
         if (userKeywords) {
-            for (const std::wstring& keyword : *userKeywords) {
-                if (compactKey == WithoutSpaces(keyword) ||
-                    lastWord == keyword) {
+            for (const DessertKeyword& keyword : *userKeywords) {
+                if (compactKey == keyword.compact ||
+                    lastWord == keyword.normalized) {
                     return Group::Dessert;
                 }
             }
@@ -1279,10 +1287,8 @@ static bool ParseMenuJson(const std::wstring& json, ParsedMonth& out) {
         if (!JsonObject::TryParse(json, root) || !root) {
             return false;
         }
-        if (!root.HasKey(L"menu")) {
-            return false;
-        }
 
+        // Null when "menu" is missing or not an array.
         JsonArray dayArray = root.GetNamedArray(L"menu", nullptr);
         if (!dayArray) {
             return false;
@@ -2501,15 +2507,9 @@ static Style MakeSubtleButtonStyle(bool light, int verticalInset) {
         std::to_wstring(verticalInset);
 
     std::wstring xaml = kTemplate;
-    auto replace = [&xaml](const wchar_t* token, const std::wstring& value) {
-        size_t pos = xaml.find(token);
-        if (pos != std::wstring::npos) {
-            xaml.replace(pos, wcslen(token), value);
-        }
-    };
-    replace(L"%HOVER%", light ? L"#18000000" : L"#20FFFFFF");
-    replace(L"%PRESSED%", light ? L"#0C000000" : L"#12FFFFFF");
-    replace(L"%INSET%", inset);
+    ReplaceAll(xaml, L"%HOVER%", light ? L"#18000000" : L"#20FFFFFF");
+    ReplaceAll(xaml, L"%PRESSED%", light ? L"#0C000000" : L"#12FFFFFF");
+    ReplaceAll(xaml, L"%INSET%", inset);
 
     try {
         return Markup::XamlReader::Load(xaml).try_as<Style>();
@@ -2780,8 +2780,8 @@ static std::wstring ComputeButtonLabel(const MealState& state) {
         if (it != g_store.days.end()) {
             GroupedMenu grouped =
                 GroupMenuItems(it->second.raw[state.currentMeal]);
-            // Prefer the main dishes: "Idli - Vada" is a more useful glance
-            // than "Tea - Coffee - Milk".
+            // Prefer the main dishes: "Idli • Vada" is a more useful glance
+            // than "Tea • Coffee • Milk".
             for (int group = 0; group < kGroupCount; group++) {
                 if (!grouped.groups[group].empty()) {
                     return JoinItems(grouped.groups[group], 4);
@@ -2911,7 +2911,7 @@ static PathIcon LoadPathIcon(const wchar_t* data) {
         L"presentation\" HorizontalAlignment=\"Left\" "
         L"VerticalAlignment=\"Top\" Data=\"%DATA%\"/>";
     std::wstring xaml = kIconXaml;
-    xaml.replace(xaml.find(L"%DATA%"), 6, data);
+    ReplaceAll(xaml, L"%DATA%", data);
     try {
         return Markup::XamlReader::Load(xaml).try_as<PathIcon>();
     } catch (...) {
@@ -2963,7 +2963,7 @@ static FrameworkElement MakeTaskbarIcon(bool light, PathIcon& icon,
     return viewbox;
 }
 
-// Fills entry.button, entry.icon and entry.label. The entry must already be in
+// Fills entry.button, entry.icon, entry.iconFilled and entry.label. The entry must already be in
 // g_taskbars, so the handlers below can find it again.
 static void BuildTaskbarButton(bool light, TaskbarEntry& entry) {
     Button button;
@@ -5153,30 +5153,33 @@ BOOL Wh_ModInit() {
 }
 
 void Wh_ModAfterInit() {
-    g_taskbarWnd.store(FindCurrentProcessTaskbarWnd());
-
-    if (g_taskbarWnd.load()) {
-        // Only the Explorer instance that owns the taskbar needs the menu.
-        StartNetThread();
+    // No taskbar in this process (a folder window's Explorer) means nothing
+    // to do at all -- neither the worker nor the button. The taskbar-creation
+    // hook covers the case where the taskbar appears later.
+    HWND hWnd = FindCurrentProcessTaskbarWnd();
+    g_taskbarWnd.store(hWnd);
+    if (!hWnd) {
+        return;
     }
 
-    if (g_taskbarWnd.load()) {
-        RunFromWindowThread(
-            g_taskbarWnd.load(),
-            [](void*) {
-                try {
-                    RemoveTaskbarButton();
-                    // Same retry chain as the taskbar-creation hook, so a
-                    // transient failure when the mod is enabled mid-session
-                    // does not leave it buttonless until a setting is touched.
-                    // InjectWithRetry starts the UI timer once it is done.
-                    InjectWithRetry(++g_injectGeneration);
-                } catch (...) {
-                    Wh_Log(L"Wh_ModAfterInit: exception during injection");
-                }
-            },
-            nullptr);
-    }
+    // Only the Explorer instance that owns the taskbar needs the menu.
+    StartNetThread();
+
+    RunFromWindowThread(
+        hWnd,
+        [](void*) {
+            try {
+                RemoveTaskbarButton();
+                // Same retry chain as the taskbar-creation hook, so a
+                // transient failure when the mod is enabled mid-session
+                // does not leave it buttonless until a setting is touched.
+                // InjectWithRetry starts the UI timer once it is done.
+                InjectWithRetry(++g_injectGeneration);
+            } catch (...) {
+                Wh_Log(L"Wh_ModAfterInit: exception during injection");
+            }
+        },
+        nullptr);
 }
 
 void Wh_ModSettingsChanged() {
